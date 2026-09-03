@@ -1316,9 +1316,16 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
     case SDL_EVENT_MOUSE_WHEEL: {
         float mx, my;
         SDL_GetMouseState(&mx, &my);
-        if (in_viewport(g, mx, my - g->tab_h, vw, vh)) {
-            if (g->tab == 1) { g->grid_zoom *= powf(1.15f, e->wheel.y); if (g->grid_zoom < 0.2f) g->grid_zoom = 0.2f; if (g->grid_zoom > 8) g->grid_zoom = 8; }
-            else camera_zoom(&g->cam, e->wheel.y);
+        if (mx < vw) {
+            /* Nuklear scrolls the active window (the panel) on every wheel
+             * event, wherever the mouse is.  Wheel input left of the panel
+             * belongs to the view, so take it back out of Nuklear's input. */
+            g->ctx->input.mouse.scroll_delta.x -= e->wheel.x;
+            g->ctx->input.mouse.scroll_delta.y -= e->wheel.y;
+            if (in_viewport(g, mx, my - g->tab_h, vw, vh)) {
+                if (g->tab == 1) { g->grid_zoom *= powf(1.15f, e->wheel.y); if (g->grid_zoom < 0.2f) g->grid_zoom = 0.2f; if (g->grid_zoom > 8) g->grid_zoom = 8; }
+                else camera_zoom(&g->cam, e->wheel.y);
+            }
         }
         break;
     }
