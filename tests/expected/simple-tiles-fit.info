@@ -2,16 +2,15 @@ file: simple.svg
 paths: 5  shapes: 5  colours in SVG: 5  slots: 5  materials: 6/8
 logo size: 194.00 x 107.78 mm  (scale 1.07778 mm/unit)
 model bbox: 200.00 x 113.78 x 4.20 mm
-triangles: 3692
-base: #202020  2.0 mm thick  45423 mm^3  464 tris
+base: #202020  2.0 mm thick  45423 mm^3
 pieces: 4 (plate 116 x 116 mm)
 plates: 4 (printer plate 120 x 120 mm, 8 mm between pieces)
-  chunk01: 100.0 x 68.9 mm, 1564 tris  plate 1 at 52.0,36.4
-  chunk02: 112.0 x 68.9 mm, 300 tris  plate 2 at 58.0,36.4
-  chunk03: 100.0 x 56.9 mm, 1564 tris  plate 3 at 52.0,30.4
-  chunk04: 112.0 x 56.9 mm, 264 tris  plate 4 at 58.0,30.4
-slot 1: #1E3A8A  shapes 1  area 15844.0 mm^2  z 2.00-4.00 mm  volume 41530.5 mm^3  tris 560  (body)
-slot 2: #10B981  shapes 1  area 2063.1 mm^2  z 4.00-4.20 mm  volume 412.6 mm^3  tris 40
-slot 3: #F59E0B  shapes 1  area 1751.9 mm^2  z 4.00-4.20 mm  volume 350.4 mm^3  tris 2088
-slot 4: #FFFFFF  shapes 1  area 580.8 mm^2  z 4.00-4.20 mm  volume 116.2 mm^3  tris 12
-slot 5: #EF4444  shapes 1  area 525.4 mm^2  z 4.00-4.20 mm  volume 105.1 mm^3  tris 528
+  chunk01: 100.0 x 68.9 mm,  plate 1 at 52.0,36.4
+  chunk02: 112.0 x 68.9 mm,  plate 2 at 58.0,36.4
+  chunk03: 100.0 x 56.9 mm,  plate 3 at 52.0,30.4
+  chunk04: 112.0 x 56.9 mm,  plate 4 at 58.0,30.4
+slot 1: #1E3A8A  shapes 1  area 15844.0 mm^2  z 2.00-4.00 mm  volume 41530.5 mm^3  (body)
+slot 2: #10B981  shapes 1  area 2063.1 mm^2  z 4.00-4.20 mm  volume 412.6 mm^3
+slot 3: #F59E0B  shapes 1  area 1751.9 mm^2  z 4.00-4.20 mm  volume 350.4 mm^3
+slot 4: #FFFFFF  shapes 1  area 580.8 mm^2  z 4.00-4.20 mm  volume 116.2 mm^3
+slot 5: #EF4444  shapes 1  area 525.4 mm^2  z 4.00-4.20 mm  volume 105.1 mm^3

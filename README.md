@@ -85,6 +85,18 @@ With SDL3 installed system-wide you can also use the plain Makefile:
 Use CMake with Visual Studio or MinGW. SDL3 is fetched automatically when it is
 not found (`vcpkg install sdl3` also works).
 
+### CPU baseline
+
+x86-64 builds use FMA, which needs Haswell (2013) or newer. For older machines:
+
+    cmake -B build -DLOGO3D_X86_FMA=OFF        # or: make X86_FMA=0
+
+Because a fused multiply-add rounds once where two operations round twice, the
+tessellator reaches a different - equally correct - triangulation of the same
+shape than a build without one. The tests therefore compare the geometry
+(colour slots, areas, volumes, and that every solid is closed) rather than
+triangle counts; see `tests/compare_info.py`.
+
 ## Using the GUI
 
     logo3dprint [logo.svg]
