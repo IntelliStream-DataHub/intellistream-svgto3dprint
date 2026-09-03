@@ -41,6 +41,7 @@ PFN_glUseProgram l3d_glUseProgram;
 PFN_glDeleteProgram l3d_glDeleteProgram;
 PFN_glGetUniformLocation l3d_glGetUniformLocation;
 PFN_glGetAttribLocation l3d_glGetAttribLocation;
+PFN_glBindAttribLocation l3d_glBindAttribLocation;
 PFN_glUniform1i l3d_glUniform1i;
 PFN_glUniform1f l3d_glUniform1f;
 PFN_glUniform3f l3d_glUniform3f;
@@ -145,6 +146,8 @@ int glapi_load(void *(*getproc)(const char *name), const char **missing)
     if (!l3d_glGetUniformLocation) { if (missing) *missing = "glGetUniformLocation"; return 0; }
     l3d_glGetAttribLocation = (PFN_glGetAttribLocation)getproc("glGetAttribLocation");
     if (!l3d_glGetAttribLocation) { if (missing) *missing = "glGetAttribLocation"; return 0; }
+    l3d_glBindAttribLocation = (PFN_glBindAttribLocation)getproc("glBindAttribLocation");
+    if (!l3d_glBindAttribLocation) { if (missing) *missing = "glBindAttribLocation"; return 0; }
     l3d_glUniform1i = (PFN_glUniform1i)getproc("glUniform1i");
     if (!l3d_glUniform1i) { if (missing) *missing = "glUniform1i"; return 0; }
     l3d_glUniform1f = (PFN_glUniform1f)getproc("glUniform1f");
