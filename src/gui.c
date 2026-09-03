@@ -1362,7 +1362,14 @@ static void load_fonts(gui_t *g)
         NULL
     };
     float size = floorf(15.0f * g->ui + 0.5f);
-    struct nk_font_config cfg = nk_font_config(size);
+    /* Nuklear lays out and draws in window units, which on a Retina Mac cover
+     * g->px framebuffer pixels each.  Everything but the text is solid-coloured
+     * triangles and magnifies losslessly; glyphs come from a texture, so bake
+     * the atlas at the size the pixels actually are and let nuklear scale the
+     * quads back down (it divides by handle.height / info.height).  The atlas
+     * then lands on the framebuffer one texel per pixel. */
+    float baked = floorf(size * g->px + 0.5f);
+    struct nk_font_config cfg = nk_font_config(baked);
     int i;
     /* glyphs rendered 1:1 on integer pixels stay sharp */
     cfg.oversample_h = 1;
@@ -1371,17 +1378,22 @@ static void load_fonts(gui_t *g)
     nk_sdl_font_stash_begin(&atlas);
     for (i = 0; candidates[i] && !font; i++) {
         SDL_PathInfo info;
-        if (SDL_GetPathInfo(candidates[i], &info)) font = nk_font_atlas_add_from_file(atlas, candidates[i], size, &cfg);
+        if (SDL_GetPathInfo(candidates[i], &info)) font = nk_font_atlas_add_from_file(atlas, candidates[i], baked, &cfg);
     }
     if (!font) {
-        cfg = nk_font_config(floorf(13.0f * g->ui + 0.5f));
+        size = floorf(13.0f * g->ui + 0.5f);
+        baked = floorf(size * g->px + 0.5f);
+        cfg = nk_font_config(baked);
         cfg.oversample_h = 1;
         cfg.oversample_v = 1;
         cfg.pixel_snap = nk_true;
-        font = nk_font_atlas_add_default(atlas, cfg.size, &cfg);
+        font = nk_font_atlas_add_default(atlas, baked, &cfg);
     }
     nk_sdl_font_stash_end();
-    if (font) nk_style_set_font(g->ctx, &font->handle);
+    if (font) {
+        font->handle.height = size;   /* draw the oversized atlas at its window-unit size */
+        nk_style_set_font(g->ctx, &font->handle);
+    }
     /* clearer check boxes: dark box, bright mark when checked */
     {
         struct nk_style *s = &g->ctx->style;
