@@ -28,6 +28,8 @@ Turn an SVG logo into a multi-colour 3D-printable model. Written in C.
 The GUI is built on SDL3 + OpenGL 3.2 and the single-header Nuklear toolkit, so
 it runs on Linux, Windows and macOS.
 
+![logo3dprint GUI showing a multi-colour logo model](docs/screenshot.png)
+
 ## Building
 
 Dependencies: a C99 compiler, CMake ≥ 3.16 (or GNU make), and SDL3.
