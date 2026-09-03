@@ -2,7 +2,7 @@
 #
 # Requires SDL3 (pkg-config "sdl3"). Nuklear and libtess2 are vendored.
 #   make            build ./logo3dprint
-#   make test       run the headless export tests
+#   make test       run the unit tests and the headless CLI regression tests
 #   make clean
 #   make release VERSION=v1.2.3   tag and push a release (see below)
 
@@ -59,7 +59,14 @@ $(BUILD)/tess2_%.o: third_party/libtess2/%.c | $(BUILD)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-test: logo3dprint
+# Unit tests for the polygon operations: no SDL, just region.c and libtess2.
+TEST_REGION = $(BUILD)/test_region
+
+$(TEST_REGION): tests/test_region.c src/region.c src/region.h $(TESS_OBJ) | $(BUILD)
+	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 -o $@ tests/test_region.c src/region.c $(TESS_OBJ) -lm
+
+test: logo3dprint $(TEST_REGION)
+	$(TEST_REGION)
 	sh tests/run_tests.sh ./logo3dprint
 
 clean:

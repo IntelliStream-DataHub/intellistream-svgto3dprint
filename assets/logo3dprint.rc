@@ -1,0 +1,2 @@
+/* Windows executable icon (taskbar, Explorer). Built into the .exe by CMake. */
+1 ICON "logo3dprint.ico"

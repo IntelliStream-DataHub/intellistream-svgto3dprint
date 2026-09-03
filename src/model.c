@@ -1427,12 +1427,17 @@ static void cut_chunk_grid(chunklist *out, const chunk_t *src, int nslots, const
             tmp.tile[0] = x0; tmp.tile[1] = y0; tmp.tile[2] = x1; tmp.tile[3] = y1;
             region_init(&rect);
             region_add_rect(&rect, x0 - 1e-6, y0 - 1e-6, x1 + 1e-6, y1 + 1e-6);
+            /* rectangle clipping: Sutherland-Hodgman, not the general boolean
+             * intersect. It is exact and immune to the tessellator robustness
+             * issues that a whole design's region (many disjoint, sometimes
+             * very detailed contours) can trigger when intersected against a
+             * small rectangle far from most of the content. */
             for (s = 0; s < nslots; s++) {
                 if (src->slot_region[s].n == 0) continue;
-                if (!region_intersect(&tmp.slot_region[s], &src->slot_region[s], &rect)) region_init(&tmp.slot_region[s]);
+                if (!region_clip_rect(&tmp.slot_region[s], &src->slot_region[s], x0 - 1e-6, y0 - 1e-6, x1 + 1e-6, y1 + 1e-6)) region_init(&tmp.slot_region[s]);
                 if (tmp.slot_region[s].n) any = 1;
             }
-            if (src->body_region.n && !region_intersect(&tmp.body_region, &src->body_region, &rect)) region_init(&tmp.body_region);
+            if (src->body_region.n && !region_clip_rect(&tmp.body_region, &src->body_region, x0 - 1e-6, y0 - 1e-6, x1 + 1e-6, y1 + 1e-6)) region_init(&tmp.body_region);
             if (any && chunk_geometry_bbox(&tmp)) {
                 chunk_t *c = chunklist_add(out);
                 region_free(&c->clip);
@@ -2307,10 +2312,85 @@ int model_build_meshes(model_t *m, const model_params *p)
     return model_build_view(m, p);
 }
 
+void model_chunk_footprint(const model_t *m, int chunk, double *w, double *d)
+{
+    double cw, cd, a, c, s;
+    model_chunk_size(m, chunk, &cw, &cd);
+    if (chunk < 0 || chunk >= m->nchunks) { *w = *d = 0; return; }
+    a = m->chunks[chunk].rot * M_PI / 180;
+    c = fabs(cos(a));
+    s = fabs(sin(a));
+    *w = cw * c + cd * s;
+    *d = cw * s + cd * c;
+}
+
+typedef struct { int plate; double y, h, x; } shelf_t;
+
+/* First-fit shelf packing in piece order: plate 1 gets the first pieces, and
+ * a later small piece may still slip into an earlier gap. The printer plate
+ * is the piece limit plus the 2 mm clearance on every side; pieces keep
+ * chunk_spacing between them. A piece that does not fit the plate at all
+ * gets a plate of its own, centred. */
+void model_pack_plates(model_t *m, const model_params *p)
+{
+    double W = p->chunk_max_w, D = p->chunk_max_d, gap = p->chunk_spacing > 0 ? p->chunk_spacing : 0;
+    shelf_t *shelves;
+    double *bottom;             /* used depth per plate */
+    int nshelves = 0, nplates = 0, i;
+    m->plate_w = W + 4;
+    m->plate_d = D + 4;
+    m->nplates = 0;
+    if (m->nchunks == 0) return;
+    shelves = (shelf_t *)malloc(sizeof(shelf_t) * (size_t)m->nchunks);
+    bottom = (double *)malloc(sizeof(double) * (size_t)m->nchunks);
+    for (i = 0; i < m->nchunks; i++) {
+        chunk_t *c = &m->chunks[i];
+        double w, d, x;
+        int s, k, sh = -1;
+        model_chunk_footprint(m, i, &w, &d);
+        if (!c->fits || w > W + 1e-9 || d > D + 1e-9) {
+            k = nplates++;
+            bottom[k] = D;
+            c->on_plate = k;
+            c->plate_pos[0] = 2 + W / 2;
+            c->plate_pos[1] = 2 + D / 2;
+            continue;
+        }
+        for (s = 0; s < nshelves; s++) {
+            x = shelves[s].x + (shelves[s].x > 0 ? gap : 0);
+            if (d <= shelves[s].h + 1e-9 && x + w <= W + 1e-9) { sh = s; break; }
+        }
+        if (sh < 0) {
+            double y;
+            for (k = 0; k < nplates; k++) {
+                y = bottom[k] + (bottom[k] > 0 ? gap : 0);
+                if (y + d <= D + 1e-9) break;
+            }
+            if (k == nplates) { nplates++; bottom[k] = 0; }
+            y = bottom[k] + (bottom[k] > 0 ? gap : 0);
+            shelves[nshelves].plate = k;
+            shelves[nshelves].y = y;
+            shelves[nshelves].h = d;
+            shelves[nshelves].x = 0;
+            bottom[k] = y + d;
+            sh = nshelves++;
+        }
+        x = shelves[sh].x + (shelves[sh].x > 0 ? gap : 0);
+        c->on_plate = shelves[sh].plate;
+        c->plate_pos[0] = 2 + x + w / 2;
+        c->plate_pos[1] = 2 + shelves[sh].y + d / 2;
+        shelves[sh].x = x + w;
+    }
+    m->nplates = nplates;
+    free(shelves);
+    free(bottom);
+}
+
 int model_build_view(model_t *m, const model_params *p)
 {
     int i, s, k;
     if (!m->valid || m->nchunks == 0) return 0;
+    model_pack_plates(m, p);
 
     /* preview placement: original positions, pushed apart where plates would overlap */
     for (i = 0; i < m->nchunks; i++) {
@@ -2318,7 +2398,14 @@ int model_build_view(model_t *m, const model_params *p)
         c->place[0] = c->center[0];
         c->place[1] = c->center[1];
     }
-    if (p->chunk_mode != CHUNK_OFF) {
+    /* Connected plates (tiles, or object mode with joints) are already laid
+     * out exactly by the tile grid / row-strip system, edge to edge, with
+     * only the intentional dovetail overlap between neighbours; pushing them
+     * apart on top of that would break the precise tab/socket registration.
+     * Push-apart is for independent, per-piece plates (own margin each),
+     * which can genuinely need separation if their content sits close in the
+     * original design. */
+    if (p->chunk_mode != CHUNK_OFF && !(p->chunk_joints && z_has_base(p) && m->nchunks > 1)) {
         for (i = 0; i < m->nchunks; i++) {
             chunk_t *c = &m->chunks[i];
             double shift = 0;

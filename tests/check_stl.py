@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
+"""Validate binary STL files written by logo3dprint: the record count matches
+the file size and every mesh is closed (each directed edge matched by the
+same number of reversed edges). Exit status is non-zero when a file fails."""
 import sys, struct
-for path in sys.argv[1:]:
+
+def check(path):
     data = open(path, "rb").read()
     n = struct.unpack("<I", data[80:84])[0]
     assert len(data) == 84 + 50 * n, (len(data), n)
@@ -14,3 +18,8 @@ for path in sys.argv[1:]:
             edges[e] = edges.get(e, 0) + 1
     bad = sum(1 for (a, b), k in edges.items() if k != edges.get((b, a), 0))
     print(f"{path}: {n} triangles, volume {vol/6:.1f} mm^3, {'closed' if bad == 0 else 'OPEN (%d bad edges)' % bad}")
+    return bad == 0 and n > 0
+
+if __name__ == "__main__":
+    results = [check(p) for p in sys.argv[1:]]
+    sys.exit(0 if all(results) else 1)

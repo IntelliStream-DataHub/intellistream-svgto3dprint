@@ -232,6 +232,15 @@ int region_subtract(region_t *out, const region_t *a, const region_t *const *sub
     return ok;
 }
 
+/* A intersect B. Both inputs are normalised (positive outer contours,
+ * negative holes, no self-overlap), so the winding number is exactly 2 where
+ * both cover: one ABS_GEQ_TWO pass is the whole job. Do not "improve" this
+ * into A - (A - B): that feeds libtess2 edges coinciding with A's own
+ * boundary, and the rounded crossing vertices it re-inserts along them give
+ * contours with extra near-collinear vertices. The cap
+ * triangulation and the side walls then disagree about those edges and the
+ * extruded mesh comes out open (seen on clip-path'ed logo letters). Tile
+ * clipping against a rectangle uses region_clip_rect(), not this. */
 int region_intersect(region_t *out, const region_t *a, const region_t *b)
 {
     TESStesselator *t;
@@ -244,6 +253,93 @@ int region_intersect(region_t *out, const region_t *a, const region_t *b)
     ok = boundary_to_region(t, TESS_WINDING_ABS_GEQ_TWO, out);
     tessDeleteTess(t);
     return ok;
+}
+
+/* Sutherland-Hodgman: clip a (possibly non-convex, but simple) polygon
+ * against one half-plane "keep(x,y)". `in`/`out` are flat x,y arrays. */
+typedef int (*sh_keep_fn)(double x, double y, double edge);
+
+static int sh_keep_xge(double x, double y, double e) { (void)y; return x >= e; }
+static int sh_keep_xle(double x, double y, double e) { (void)y; return x <= e; }
+static int sh_keep_yge(double x, double y, double e) { (void)x; return y >= e; }
+static int sh_keep_yle(double x, double y, double e) { (void)x; return y <= e; }
+
+/* Intersection of segment (x0,y0)-(x1,y1) with the boundary line of the
+ * half-plane (vertical line x=edge for the x tests, horizontal for y). */
+static void sh_isect(double x0, double y0, double x1, double y1, double edge, int is_x, double *ox, double *oy)
+{
+    double t;
+    if (is_x) {
+        t = (edge - x0) / (x1 - x0);
+        *ox = edge;
+        *oy = y0 + t * (y1 - y0);
+    } else {
+        t = (edge - y0) / (y1 - y0);
+        *ox = x0 + t * (x1 - x0);
+        *oy = edge;
+    }
+}
+
+static int sh_clip_pass(const double *in, int nin, double *out, double edge, int is_x, sh_keep_fn keep)
+{
+    int nout = 0, i;
+    if (nin == 0) return 0;
+    for (i = 0; i < nin; i++) {
+        double cx = in[2 * i], cy = in[2 * i + 1];
+        int j = (i + 1) % nin;
+        double nx = in[2 * j], ny = in[2 * j + 1];
+        int cin = keep(cx, cy, edge), nin_ = keep(nx, ny, edge);
+        if (cin) {
+            out[2 * nout] = cx; out[2 * nout + 1] = cy; nout++;
+            if (!nin_) {
+                double ix, iy;
+                sh_isect(cx, cy, nx, ny, edge, is_x, &ix, &iy);
+                out[2 * nout] = ix; out[2 * nout + 1] = iy; nout++;
+            }
+        } else if (nin_) {
+            double ix, iy;
+            sh_isect(cx, cy, nx, ny, edge, is_x, &ix, &iy);
+            out[2 * nout] = ix; out[2 * nout + 1] = iy; nout++;
+        }
+    }
+    return nout;
+}
+
+int region_clip_rect(region_t *out, const region_t *in, double x0, double y0, double x1, double y1)
+{
+    int i, cap = 0;
+    double *buf = NULL, *tmp = NULL;
+    region_t raw;
+    region_init(out);
+    if (in->n == 0 || in->maxx < x0 || in->minx > x1 || in->maxy < y0 || in->miny > y1) return 1;
+    region_init(&raw);
+    for (i = 0; i < in->n; i++) {
+        const contour_t *c = &in->c[i];
+        int n = c->n, cn, need;
+        /* each of the 4 clip passes can at most double the vertex count */
+        need = n * 16 + 32;
+        if (need > cap) { cap = need; buf = (double *)realloc(buf, sizeof(double) * 2 * (size_t)cap); tmp = (double *)realloc(tmp, sizeof(double) * 2 * (size_t)cap); }
+        memcpy(buf, c->pts, sizeof(double) * 2 * (size_t)n);
+        cn = sh_clip_pass(buf, n, tmp, x0, 1, sh_keep_xge); memcpy(buf, tmp, sizeof(double) * 2 * (size_t)cn); n = cn;
+        cn = sh_clip_pass(buf, n, tmp, x1, 1, sh_keep_xle); memcpy(buf, tmp, sizeof(double) * 2 * (size_t)cn); n = cn;
+        cn = sh_clip_pass(buf, n, tmp, y0, 0, sh_keep_yge); memcpy(buf, tmp, sizeof(double) * 2 * (size_t)cn); n = cn;
+        cn = sh_clip_pass(buf, n, tmp, y1, 0, sh_keep_yle); memcpy(buf, tmp, sizeof(double) * 2 * (size_t)cn); n = cn;
+        if (n >= 3) region_add_contour(&raw, buf, n);
+    }
+    free(buf);
+    free(tmp);
+    /* Sutherland-Hodgman clips every contour on its own: a shape the
+     * rectangle cuts into several parts comes back as one contour whose parts
+     * hang together by zero-width bridges along the clip edge, and a cut hole
+     * overlaps its outer contour there. Normalising (non-zero winding) turns
+     * that into clean separate contours, which the extruder needs: the bridge
+     * edges otherwise leave the side walls open (seen as open tile meshes on a
+     * ring cut by a tile edge). Only the few contours near the rectangle reach
+     * the tessellator here, the easy case for it. */
+    if (raw.n == 0) return 1;
+    if (!region_normalize(out, &raw, 0)) { *out = raw; return 1; }   /* keep the raw clip rather than nothing */
+    region_free(&raw);
+    return 1;
 }
 
 int region_triangulate(const region_t *r, double **verts, int *nverts, int **tris, int *ntris)

@@ -16,6 +16,7 @@ typedef struct {
     int view_preset;            /* GUI: initial camera preset (0 iso, 1 top, 2 front, 3 right) */
     int win_w, win_h;           /* GUI: initial window size (0 = default) */
     int open_piece;             /* GUI: start on the tab of this piece (1-based, 0 = none) */
+    int init_tab;               /* GUI: 0 = auto (pieces grid when split), 1 = Model tab, 2 = Pieces grid */
     char text_font[1024];       /* font file for <text> ("" = pick system fonts) */
 } app_state;
 

@@ -14,7 +14,9 @@ static void usage(FILE *f)
         "Without --export or --info the GUI starts (with the SVG loaded when given).\n"
         "\n"
         "  --export FILE        write FILE (.stl or .3mf) and exit\n"
-        "                       STL: one file per colour, FILE is the prefix\n"
+        "  --per-color          STL: one file per colour instead of one merged file\n"
+        "                       (needs a manual multi-part merge in the slicer; use 3MF\n"
+        "                       for multi-colour printing instead), FILE is the prefix\n"
         "  --info               print colour slots and model statistics, then exit\n"
         "  --width MM           model width in mm, base plate included (default 200)\n"
         "  --height MM          fit the model to this height instead of a width\n"
@@ -51,12 +53,16 @@ static void usage(FILE *f)
         "                       with dovetail joints\n"
         "  --joint-clearance MM play between dovetail tab and socket (default 0.15)\n"
         "  --single-file        export all pieces into one file instead of one file per piece\n"
+        "  --per-plate          one file per printer plate, with the pieces arranged on it\n"
+        "                       (--info shows the arrangement; spacing = --spacing)\n"
+        "  --spacing MM         space between pieces, in the preview and on a plate (default 8)\n"
 
         "  --font FILE          TrueType/OpenType font for <text> (default: matching system font)\n"
         "  --screenshot FILE    GUI: render one frame to FILE (binary PPM) and exit\n"
         "  --view iso|top|front|right  GUI: initial camera\n"
         "  --window WxH         GUI: initial window size\n"
         "  --piece N            GUI: start on the tab of piece N\n"
+        "  --tab model|pieces   GUI: initial tab (default: pieces grid when split)\n"
         "  -h, --help           this text\n");
 }
 
@@ -91,6 +97,7 @@ static void print_info(const app_state *a)
         if (p->chunk_mode == CHUNK_OBJECTS && m->chunk_fit_scale > 0) printf("  every piece fits uncut up to %.0f%% of this size", m->chunk_fit_scale * 100);
         if (m->chunk_uniform_scale < 0.9995) printf("  all pieces scaled to %.0f%%", m->chunk_uniform_scale * 100);
         printf("\n");
+        printf("plates: %d (printer plate %.0f x %.0f mm, %.0f mm between pieces)\n", m->nplates, m->plate_w, m->plate_d, p->chunk_spacing);
         for (i = 0; i < m->nchunks; i++) {
             double w, d;
             model_chunk_size(m, i, &w, &d);
@@ -98,6 +105,7 @@ static void print_info(const app_state *a)
                    m->chunks[i].fits ? "" : "  (too large for the plate!)");
             if (m->chunks[i].rot != 0) printf("  turned %.0f deg on export", m->chunks[i].rot);
             if (m->chunks[i].scale != 1) printf("  scaled to %.0f%% on export", m->chunks[i].scale * 100);
+            printf("  plate %d at %.1f,%.1f", m->chunks[i].on_plate + 1, m->chunks[i].plate_pos[0], m->chunks[i].plate_pos[1]);
             printf("\n");
         }
     }
@@ -126,7 +134,7 @@ int cli_main(int argc, char **argv, app_state *a)
     double stagger_first = -1, stagger_step = 0;
     int hide[MAX_SLOTS], nhide = 0;
     int base_slot = -1;
-    int single_file = 0;
+    int single_file = 0, per_plate = 0;
     int fit_plate = 0;
 
     for (i = 1; i < argc; i++) {
@@ -135,7 +143,7 @@ int cli_main(int argc, char **argv, app_state *a)
 #define NEED_ARG() do { if (!next) { fprintf(stderr, "%s needs an argument\n", s); return 2; } i++; } while (0)
         if (!strcmp(s, "-h") || !strcmp(s, "--help")) { usage(stdout); return 0; }
         else if (!strcmp(s, "--export")) { NEED_ARG(); export_path = next; }
-        else if (!strcmp(s, "--per-color")) per_color = 1;   /* accepted for compatibility: STL is always per colour */
+        else if (!strcmp(s, "--per-color")) per_color = 1;
         else if (!strcmp(s, "--info")) info = 1;
         else if (!strcmp(s, "--width")) { NEED_ARG(); a->params.width_mm = atof(next); a->params.fit_by_height = 0; a->width_from_cli = 1; }
         else if (!strcmp(s, "--height")) { NEED_ARG(); a->params.height_mm = atof(next); a->params.fit_by_height = 1; a->width_from_cli = 1; }
@@ -173,6 +181,12 @@ int cli_main(int argc, char **argv, app_state *a)
             if (sscanf(next, "%dx%d", &a->win_w, &a->win_h) != 2 || a->win_w < 400 || a->win_h < 300) { fprintf(stderr, "bad --window value '%s' (e.g. 1600x1000)\n", next); return 2; }
         }
         else if (!strcmp(s, "--piece")) { NEED_ARG(); a->open_piece = atoi(next); }
+        else if (!strcmp(s, "--tab")) {
+            NEED_ARG();
+            if (!strcmp(next, "model")) a->init_tab = 1;
+            else if (!strcmp(next, "pieces")) a->init_tab = 2;
+            else { fprintf(stderr, "bad --tab value '%s' (model, pieces)\n", next); return 2; }
+        }
         else if (!strcmp(s, "--view")) {
             NEED_ARG();
             if (!strcmp(next, "top")) a->view_preset = 1;
@@ -206,6 +220,8 @@ int cli_main(int argc, char **argv, app_state *a)
         else if (!strcmp(s, "--fit-plate")) fit_plate = 1;
         else if (!strcmp(s, "--padding")) { NEED_ARG(); a->params.plate_padding = atof(next); }
         else if (!strcmp(s, "--single-file")) single_file = 1;
+        else if (!strcmp(s, "--per-plate")) per_plate = 1;
+        else if (!strcmp(s, "--spacing")) { NEED_ARG(); a->params.chunk_spacing = atof(next); }
         else if (!strcmp(s, "--no-joints")) a->params.chunk_joints = 0;
         else if (!strcmp(s, "--joint-clearance")) { NEED_ARG(); a->params.joint_clearance = atof(next); }
 
@@ -254,9 +270,8 @@ int cli_main(int argc, char **argv, app_state *a)
         size_t len = strlen(export_path);
         int kind, files;
         if (len > 4 && (!strcmp(export_path + len - 4, ".3mf") || !strcmp(export_path + len - 4, ".3MF"))) kind = 2;
-        else kind = 1;
-        (void)per_color;
-        files = export_model(&a->model, &a->params, kind, !single_file, export_path, err, sizeof(err));
+        else kind = per_color ? 1 : 0;
+        files = export_model(&a->model, &a->params, kind, single_file ? 0 : (per_plate ? 2 : 1), export_path, err, sizeof(err));
         if (!files) { fprintf(stderr, "export failed: %s\n", err); return 1; }
         if (files == 1) printf("wrote %s\n", export_path);
         else printf("wrote %d files (%s ...)\n", files, export_path);

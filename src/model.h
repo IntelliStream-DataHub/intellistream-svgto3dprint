@@ -39,6 +39,8 @@ typedef struct {
     double rot;                 /* rotation (degrees, about Z) applied on export so the piece fits the plate */
     double scale;               /* XY scale applied on export (1 = as designed; < 1 = shrunk to fit) */
     int fits;                   /* exported footprint fits the plate */
+    int on_plate;               /* printer plate the piece is arranged on (0-based) */
+    double plate_pos[2];        /* centre of its exported footprint on that plate (mm from the front-left corner) */
     region_t slot_region[MAX_SLOTS];    /* local coords (centred on the chunk) */
     region_t body_region;               /* layered mode: union of all colours */
     region_t base_region;
@@ -117,6 +119,9 @@ typedef struct {
     int chunk_oversize_used;
     double chunk_fit_scale;     /* largest uniform scale (relative to now) at which every piece fits uncut */
     double chunk_uniform_scale; /* scale applied to every piece (policy 1), 1 when nothing was shrunk */
+    /* arrangement of the pieces on printer plates (model_pack_plates) */
+    int nplates;
+    double plate_w, plate_d;    /* the printer plate: piece limit plus 2 mm clearance each side */
     /* preview geometry: all chunks placed side by side (or one chunk centred) */
     region_t view_slot_region[MAX_SLOTS];
     region_t view_base_region;
@@ -155,6 +160,11 @@ int model_body_slot(const model_t *m, const model_params *p);
 void model_slot_zrange(const model_t *m, const model_params *p, int slot, double *zlo, double *zhi);
 /* Size of a chunk's footprint including its base plate (unrotated). */
 void model_chunk_size(const model_t *m, int chunk, double *w, double *d);
+/* Footprint of a piece as exported: turned and scaled to fit the plate. */
+void model_chunk_footprint(const model_t *m, int chunk, double *w, double *d);
+/* Arrange the pieces on printer plates (shelf packing in piece order); fills
+ * chunk plate / plate_pos and nplates. Called by model_build_view. */
+void model_pack_plates(model_t *m, const model_params *p);
 /* Angle (degrees) that lets a w x d footprint fit a W x D plate, or -1. */
 double model_fit_angle(double w, double d, double W, double D);
 /* Copy of a mesh / region rotated (degrees about Z) and scaled in XY. */

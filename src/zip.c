@@ -134,3 +134,4 @@ int zip_close(zip_writer *z)
     memset(z, 0, sizeof(*z));
     return ok;
 }
+

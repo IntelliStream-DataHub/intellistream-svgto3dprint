@@ -1,0 +1,31 @@
+file: simple.svg
+paths: 5  shapes: 5  colours in SVG: 5  slots: 5  materials: 6/8
+logo size: 194.00 x 107.78 mm  (scale 1.07778 mm/unit)
+model bbox: 200.00 x 113.78 x 4.20 mm
+triangles: 4904
+base: #202020  2.0 mm thick  45250 mm^3  1304 tris
+pieces: 18 (plate 56 x 56 mm)
+plates: 18 (printer plate 60 x 60 mm, 8 mm between pieces)
+  chunk01: 35.3 x 47.8 mm, 320 tris  plate 1 at 19.7,25.9
+  chunk02: 42.1 x 47.0 mm, 440 tris  plate 2 at 23.0,25.5
+  chunk03: 42.1 x 47.0 mm, 292 tris  plate 3 at 23.0,25.5
+  chunk04: 42.1 x 47.0 mm, 104 tris  plate 4 at 23.0,25.5
+  chunk05: 42.1 x 47.0 mm, 96 tris  plate 5 at 23.0,25.5
+  chunk06: 45.1 x 47.8 mm, 272 tris  plate 6 at 24.5,25.9
+  chunk07: 35.3 x 44.8 mm, 484 tris  plate 7 at 19.7,24.4
+  chunk08: 41.3 x 44.0 mm, 528 tris  plate 8 at 22.7,24.0
+  chunk09: 41.3 x 44.0 mm, 588 tris  plate 9 at 22.7,24.0
+  chunk10: 41.3 x 44.0 mm, 116 tris  plate 10 at 22.7,24.0
+  chunk11: 41.3 x 44.0 mm, 120 tris  plate 11 at 22.7,24.0
+  chunk12: 44.3 x 44.8 mm, 100 tris  plate 12 at 24.2,24.4
+  chunk13: 35.3 x 38.9 mm, 320 tris  plate 13 at 19.7,21.5
+  chunk14: 42.1 x 38.9 mm, 440 tris  plate 14 at 23.0,21.5
+  chunk15: 42.1 x 38.9 mm, 292 tris  plate 15 at 23.0,21.5
+  chunk16: 42.1 x 38.9 mm, 72 tris  plate 16 at 23.0,21.5
+  chunk17: 42.1 x 38.9 mm, 80 tris  plate 17 at 23.0,21.5
+  chunk18: 45.1 x 38.9 mm, 240 tris  plate 18 at 24.5,21.5
+slot 1: #1E3A8A  shapes 1  area 15844.0 mm^2  z 2.00-4.00 mm  volume 41530.5 mm^3  tris 728  (body)
+slot 2: #10B981  shapes 1  area 2063.1 mm^2  z 4.00-4.20 mm  volume 412.6 mm^3  tris 112
+slot 3: #F59E0B  shapes 1  area 1751.9 mm^2  z 4.00-4.20 mm  volume 350.4 mm^3  tris 2168
+slot 4: #FFFFFF  shapes 1  area 580.8 mm^2  z 4.00-4.20 mm  volume 116.2 mm^3  tris 72
+slot 5: #EF4444  shapes 1  area 525.4 mm^2  z 4.00-4.20 mm  volume 105.1 mm^3  tris 520

@@ -126,12 +126,38 @@ static int write_stl_file(const char *path, const export_part *parts, int nparts
     return 1;
 }
 
-int export_stl(const model_t *m, const model_params *p, int chunk, const char *path, char *err, size_t errlen)
+export_part *export_collect_plate_pieces(const model_t *m, const model_params *p, int plate, int *count)
+{
+    export_part *all = NULL;
+    int n = 0, i, j;
+    *count = 0;
+    if (!m->meshes_valid) return NULL;
+    for (i = 0; i < m->nchunks; i++) {
+        export_part parts[MAX_SLOTS + 1];
+        const chunk_t *c = &m->chunks[i];
+        int k;
+        if (c->on_plate != plate) continue;
+        k = export_collect_parts(m, p, i, parts);
+        all = (export_part *)realloc(all, sizeof(export_part) * (size_t)(n + k));
+        for (j = 0; j < k; j++) {
+            all[n] = parts[j];
+            all[n].tx = c->plate_pos[0];
+            all[n].ty = c->plate_pos[1];
+            if (m->nchunks > 1) snprintf(all[n].name, sizeof(all[n].name), "%s_%s", c->name, parts[j].name);
+            n++;
+        }
+    }
+    *count = n;
+    return all;
+}
+
+int export_stl(const model_t *m, const model_params *p, int chunk, int plate, const char *path, char *err, size_t errlen)
 {
     export_part local[MAX_SLOTS + 1], *parts = local, *all = NULL;
     int n, ok;
     if (err && errlen) err[0] = 0;
-    if (chunk < 0 && m->nchunks > 1) { all = export_collect_all_pieces(m, p, &n); parts = all; }
+    if (plate >= 0) { all = export_collect_plate_pieces(m, p, plate, &n); parts = all; }
+    else if (chunk < 0 && m->nchunks > 1) { all = export_collect_all_pieces(m, p, &n); parts = all; }
     else n = export_collect_parts(m, p, chunk, local);
     if (n == 0) {
         free(all);
@@ -166,13 +192,14 @@ static void strip_ext(char *prefix, size_t cap, const char *path, const char *ex
     if (len > el && ieq(prefix + len - el, ext)) prefix[len - el] = 0;
 }
 
-int export_stl_per_color(const model_t *m, const model_params *p, int chunk, const char *path, char *err, size_t errlen)
+int export_stl_per_color(const model_t *m, const model_params *p, int chunk, int plate, const char *path, char *err, size_t errlen)
 {
     export_part local[MAX_SLOTS + 1], *parts = local, *all = NULL;
     int n, i, files = 0;
     char prefix[1024];
     if (err && errlen) err[0] = 0;
-    if (chunk < 0 && m->nchunks > 1) { all = export_collect_all_pieces(m, p, &n); parts = all; }
+    if (plate >= 0) { all = export_collect_plate_pieces(m, p, plate, &n); parts = all; }
+    else if (chunk < 0 && m->nchunks > 1) { all = export_collect_all_pieces(m, p, &n); parts = all; }
     else n = export_collect_parts(m, p, chunk, local);
     if (n == 0) {
         free(all);
@@ -213,7 +240,14 @@ int export_stl_per_color(const model_t *m, const model_params *p, int chunk, con
     return n;
 }
 
-int export_model(const model_t *m, const model_params *p, int kind, int per_chunk, const char *path, char *err, size_t errlen)
+static int export_one(const model_t *m, const model_params *p, int kind, int chunk, int plate, const char *path, char *err, size_t errlen)
+{
+    if (kind == 2) return export_3mf(m, p, chunk, plate, path, err, errlen);
+    if (kind == 1) return export_stl_per_color(m, p, chunk, plate, path, err, errlen);
+    return export_stl(m, p, chunk, plate, path, err, errlen);
+}
+
+int export_model(const model_t *m, const model_params *p, int kind, int mode, const char *path, char *err, size_t errlen)
 {
     const char *ext = kind == 2 ? ".3mf" : ".stl";
     if (err && errlen) err[0] = 0;
@@ -221,7 +255,7 @@ int export_model(const model_t *m, const model_params *p, int kind, int per_chun
         if (err && errlen) snprintf(err, errlen, "nothing to export");
         return 0;
     }
-    if (m->nchunks > 1 && per_chunk) {
+    if (m->nchunks > 1 && mode == 1) {
         char prefix[1024];
         int i, files = 0;
         strip_ext(prefix, sizeof(prefix), path, ext);
@@ -229,15 +263,26 @@ int export_model(const model_t *m, const model_params *p, int kind, int per_chun
             char fn[1200];
             int r;
             snprintf(fn, sizeof(fn), "%s_%s%s", prefix, m->chunks[i].name, ext);
-            if (kind == 2) r = export_3mf(m, p, i, fn, err, errlen);
-            else if (kind == 1) r = export_stl_per_color(m, p, i, fn, err, errlen);
-            else r = export_stl(m, p, i, fn, err, errlen);
+            r = export_one(m, p, kind, i, -1, fn, err, errlen);
             if (!r) return 0;
             files += r;
         }
         return files;
     }
-    if (kind == 2) return export_3mf(m, p, m->nchunks > 1 ? -2 : 0, path, err, errlen);
-    if (kind == 1) return export_stl_per_color(m, p, m->nchunks > 1 ? -1 : 0, path, err, errlen);
-    return export_stl(m, p, m->nchunks > 1 ? -1 : 0, path, err, errlen);
+    if (m->nchunks > 1 && mode == 2) {
+        char prefix[1024];
+        int k, files = 0;
+        if (m->nplates <= 1) return export_one(m, p, kind, -2, 0, path, err, errlen);
+        strip_ext(prefix, sizeof(prefix), path, ext);
+        for (k = 0; k < m->nplates; k++) {
+            char fn[1200];
+            int r;
+            snprintf(fn, sizeof(fn), "%s_plate%02d%s", prefix, k + 1, ext);
+            r = export_one(m, p, kind, -2, k, fn, err, errlen);
+            if (!r) return 0;
+            files += r;
+        }
+        return files;
+    }
+    return export_one(m, p, kind, m->nchunks > 1 ? (kind == 2 ? -2 : -1) : 0, -1, path, err, errlen);
 }

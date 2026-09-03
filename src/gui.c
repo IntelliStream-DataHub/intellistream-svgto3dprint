@@ -4,6 +4,7 @@
 #include "render.h"
 #include "glapi.h"
 #include "nk_sdl_gl3.h"
+#include "icon_data.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -52,7 +53,7 @@ typedef struct {
     /* text fields */
     char path_buf[1024];
     char export_buf[1200];
-    int per_chunk;
+    int export_mode;        /* 0 all pieces in one file, 1 one file per piece, 2 one file per printer plate */
     int dialogs_failed;     /* native file dialogs unavailable: show path fields */
     float stagger_first, stagger_step;
     float same_height;
@@ -114,7 +115,7 @@ static void load_file(gui_t *g, const char *path)
     g->same_height = 1.0f;
     g->stagger_first = 0.6f;
     g->stagger_step = 0.2f;
-    g->per_chunk = 1;
+    g->export_mode = 1;
     g->measure_mode = 0;
     g->nmeasure = 0;
     g->tab = 0;
@@ -149,7 +150,7 @@ static void do_export(gui_t *g, int kind, const char *path)
     if (!path[0]) { set_status(g, "Enter an export path first."); return; }
     if (len < 4 || SDL_strcasecmp(path + len - 4, ext) != 0) snprintf(fixed, sizeof(fixed), "%s%s", path, ext);
     else snprintf(fixed, sizeof(fixed), "%s", path);
-    files = export_model(&g->app->model, &g->app->params, kind == 4 ? 2 : (kind == 3 ? 1 : 0), g->per_chunk, fixed, err, sizeof(err));
+    files = export_model(&g->app->model, &g->app->params, kind == 4 ? 2 : (kind == 3 ? 1 : 0), g->export_mode, fixed, err, sizeof(err));
     if (files > 0) {
         snprintf(g->export_buf, sizeof(g->export_buf), "%s", fixed);
         if (files == 1) set_status(g, "Exported %s", fixed);
@@ -244,6 +245,17 @@ static void poll_dialogs(gui_t *g)
 
 /* ---- rebuild scheduling --------------------------------------------- */
 
+/* Settings that only matter at export time do not change the model, so
+ * toggling them must not trigger a rebuild. */
+static int params_differ(const model_params *a, const model_params *b)
+{
+    model_params x, y;
+    memcpy(&x, a, sizeof x);
+    memcpy(&y, b, sizeof y);
+    x.export_color_objects = y.export_color_objects = 0;
+    return memcmp(&x, &y, sizeof x) != 0;
+}
+
 static int params_need_layout(const model_params *a, const model_params *b)
 {
     int i;
@@ -290,7 +302,7 @@ static void schedule_rebuild(gui_t *g)
         return;
     } else {
         /* colour-only changes are cheap */
-        if (memcmp(&g->built, &g->app->params, sizeof(model_params)) != 0) {
+        if (params_differ(&g->built, &g->app->params)) {
             render_set_colors(g->ren, &g->app->model, &g->app->params);
             g->built = g->app->params;
         }
@@ -448,7 +460,9 @@ static void draw_pieces_overlay(gui_t *g, const overlay_t *o)
         grid_cell(g, o->vw, o->vh, i, &x, &y, &w, &h);
         nk_stroke_rect(o->canvas, nk_rect(o->ox + x, o->oy + y, w, h), 4 * o->ui, (i == g->sel_piece) ? 2.5f * o->ui : 1.0f * o->ui, border);
         model_chunk_size(m, i, &cw, &cd);
-        snprintf(buf, sizeof(buf), "%d: %.0f x %.0f mm", i + 1, cw, cd);
+        if (m->nplates > 1) snprintf(buf, sizeof(buf), "%d: %.0f x %.0f mm, plate %d", i + 1, cw, cd, c->on_plate + 1);
+        else snprintf(buf, sizeof(buf), "%d: %.0f x %.0f mm", i + 1, cw, cd);
+        if (text_width(o, buf) + 12 * o->ui > w) snprintf(buf, sizeof(buf), "%d: %.0f x %.0f mm", i + 1, cw, cd);
         if (text_width(o, buf) + 12 * o->ui > w) snprintf(buf, sizeof(buf), "%d", i + 1);
         ov_label(o, o->ox + x + 6 * o->ui, o->oy + y + 6 * o->ui, buf, nk_rgb(240, 240, 245),
                  c->fits ? nk_rgba(0, 0, 0, 130) : nk_rgba(160, 40, 30, 200), 0);
@@ -469,7 +483,10 @@ static void draw_pieces_overlay(gui_t *g, const overlay_t *o)
     }
     {
         float y = o->oy + o->vh - o->font->height - 8 * o->ui;
-        snprintf(buf, sizeof(buf), "%d pieces   Drag: orbit all   Wheel: zoom   Click: select   Double-click: open in Model view", m->nchunks);
+        if (m->nplates > 1)
+            snprintf(buf, sizeof(buf), "%d pieces on %d printer plates   Drag: orbit all   Wheel: zoom   Click: select   Double-click: open in Model view", m->nchunks, m->nplates);
+        else
+            snprintf(buf, sizeof(buf), "%d pieces   Drag: orbit all   Wheel: zoom   Click: select   Double-click: open in Model view", m->nchunks);
         ov_label(o, o->ox + 92 * o->ui, y, SDL_GetTicks() < g->status_until && g->status[0] ? g->status : buf,
                  nk_rgba(235, 235, 240, 220), nk_rgba(0, 0, 0, 110), 0);
     }
@@ -875,21 +892,24 @@ static void panel(gui_t *g, int x, int y, int w, int h)
             }
             nk_layout_row_end(ctx);
             nk_layout_row_dynamic(ctx, 26 * ui, 2);
-            if (nk_button_label(ctx, "Export STL...")) start_save_dialog(g, 3);
+            if (nk_button_label(ctx, "Export STL...")) start_save_dialog(g, 2);
             if (nk_button_label(ctx, "Export 3MF...")) start_save_dialog(g, 4);
             nk_layout_row_dynamic(ctx, 22 * ui, 1);
-            nk_label(ctx, "3MF: one object, a part per colour.  STL: one file per colour.", NK_TEXT_LEFT);
+            nk_label(ctx, "3MF: one object, a part per colour (multi-colour printing).", NK_TEXT_LEFT);
+            nk_label(ctx, "STL: one merged file, single colour (use 3MF for multi-colour).", NK_TEXT_LEFT);
             if (m->nchunks > 1) {
-                nk_bool pc = g->per_chunk != 0;
-                nk_checkbox_label(ctx, "One file per piece", &pc);
-                g->per_chunk = pc ? 1 : 0;
+                static const char *modes[] = {"One file per piece", "One file per printer plate (pieces arranged)", "All pieces in one file"};
+                int sel = g->export_mode == 1 ? 0 : (g->export_mode == 2 ? 1 : 2);
+                nk_layout_row_dynamic(ctx, 26 * ui, 1);
+                sel = nk_combo(ctx, modes, 3, sel, 24 * ui, nk_vec2(nk_widget_width(ctx), 110 * ui));
+                g->export_mode = sel == 0 ? 1 : (sel == 1 ? 2 : 0);
             }
             if (g->dialogs_failed) {
                 nk_layout_row_begin(ctx, NK_DYNAMIC, 26 * ui, 3);
                 nk_layout_row_push(ctx, 0.56f);
                 nk_edit_string_zero_terminated(ctx, NK_EDIT_FIELD, g->export_buf, sizeof(g->export_buf), nk_filter_default);
                 nk_layout_row_push(ctx, 0.22f);
-                if (nk_button_label(ctx, "STL")) do_export(g, 3, g->export_buf);
+                if (nk_button_label(ctx, "STL")) do_export(g, 2, g->export_buf);
                 nk_layout_row_push(ctx, 0.22f);
                 if (nk_button_label(ctx, "3MF")) do_export(g, 4, g->export_buf);
                 nk_layout_row_end(ctx);
@@ -905,8 +925,8 @@ static void panel(gui_t *g, int x, int y, int w, int h)
             double hv = p->fit_by_height ? p->height_mm : ((p->width_mm - mg) * aspect + mg);
             double w0 = wv, h0 = hv;
             nk_layout_row_dynamic(ctx, 24 * ui, 1);
-            nk_property_double(ctx, "#Model width (mm)", 1, &wv, 1000, 1, 0.2f);
-            nk_property_double(ctx, "#Model height (mm)", 1, &hv, 1000, 1, 0.2f);
+            nk_property_double(ctx, "#Model width (mm)", 1, &wv, 10000, 1, 0.2f);
+            nk_property_double(ctx, "#Model height (mm)", 1, &hv, 10000, 1, 0.2f);
             if (wv != w0) { p->width_mm = wv; p->fit_by_height = 0; }
             else if (hv != h0) { p->height_mm = hv; p->fit_by_height = 1; }
             nk_layout_row_dynamic(ctx, 26 * ui, 1);
@@ -1035,7 +1055,7 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 double maxw = 0, maxd = 0;
                 int oversize = 0;
                 nk_layout_row_dynamic(ctx, 24 * ui, 1);
-                nk_property_float(ctx, "#Preview spacing (mm)", 0, &sp, 200, 1, 0.2f);
+                nk_property_float(ctx, "#Piece spacing (mm)", 0, &sp, 200, 1, 0.2f);
                 p->chunk_spacing = sp;
                 for (i = 0; i < m->nchunks; i++) {
                     double w, d;
@@ -1045,7 +1065,10 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                     if (!m->chunks[i].fits) oversize++;
                 }
                 nk_layout_row_dynamic(ctx, 22 * ui, 1);
-                snprintf(buf, sizeof(buf), "%d piece%s, largest %.0f x %.0f mm (plate %.0f x %.0f)", m->nchunks, m->nchunks == 1 ? "" : "s", maxw, maxd, p->chunk_max_w, p->chunk_max_d);
+                if (m->nplates > 1)
+                    snprintf(buf, sizeof(buf), "%d pieces on %d plates, largest %.0f x %.0f mm (plate %.0f x %.0f)", m->nchunks, m->nplates, maxw, maxd, p->chunk_max_w, p->chunk_max_d);
+                else
+                    snprintf(buf, sizeof(buf), "%d piece%s, largest %.0f x %.0f mm (plate %.0f x %.0f)", m->nchunks, m->nchunks == 1 ? "" : "s", maxw, maxd, p->chunk_max_w, p->chunk_max_d);
                 nk_label(ctx, buf, NK_TEXT_LEFT);
                 if (m->nchunks == 1 && p->chunk_mode == CHUNK_TILES) {
                     nk_label_colored(ctx, "The whole logo fits on one plate: nothing to split.", NK_TEXT_LEFT, nk_rgb(255, 200, 90));
@@ -1382,6 +1405,32 @@ static void load_fonts(gui_t *g)
 
 /* ---- main ------------------------------------------------------------- */
 
+/* The window (and dock / taskbar) icon, decoded from the run-length RGBA
+ * stream in icon_data.h. SDL copies the surface, so nothing has to stay
+ * alive afterwards; failures just leave the default icon. */
+static void set_window_icon(SDL_Window *win)
+{
+    size_t npix = (size_t)ICON_W * ICON_H, o = 0, i;
+    Uint8 *px = (Uint8 *)malloc(npix * 4);
+    SDL_Surface *s;
+    if (!px) return;
+    for (i = 0; i + 5 <= sizeof icon_rle; i += 5) {
+        int n = icon_rle[i];
+        while (n-- > 0 && o < npix) {
+            memcpy(px + o * 4, icon_rle + i + 1, 4);
+            o++;
+        }
+    }
+    if (o == npix) {
+        s = SDL_CreateSurfaceFrom(ICON_W, ICON_H, SDL_PIXELFORMAT_RGBA32, px, ICON_W * 4);
+        if (s) {
+            SDL_SetWindowIcon(win, s);
+            SDL_DestroySurface(s);
+        }
+    }
+    free(px);
+}
+
 int gui_main(app_state *a)
 {
     gui_t g;
@@ -1401,7 +1450,7 @@ int gui_main(app_state *a)
     g.same_height = 1.0f;
     g.stagger_first = 0.6f;
     g.stagger_step = 0.2f;
-    g.per_chunk = 1;
+    g.export_mode = 1;
     g.show_dims = 1;
     g.show_triad = 1;
     g.view.show_grid = 1;
@@ -1439,7 +1488,8 @@ int gui_main(app_state *a)
         if (g.win) SDL_DestroyWindow(g.win);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-        g.win = SDL_CreateWindow("logo3dprint", 1280, 800, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        g.win = SDL_CreateWindow("logo3dprint", a->win_w > 0 ? a->win_w : 1280, a->win_h > 0 ? a->win_h : 800,
+                                 SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
         g.gl = g.win ? SDL_GL_CreateContext(g.win) : NULL;
         if (!g.win || !g.gl) {
             fprintf(stderr, "Could not create an OpenGL 3.2 window: %s\n", SDL_GetError());
@@ -1448,6 +1498,7 @@ int gui_main(app_state *a)
         }
     }
     SDL_SetWindowMinimumSize(g.win, 700, 480);
+    set_window_icon(g.win);
     SDL_GL_MakeCurrent(g.win, g.gl);
     SDL_GL_SetSwapInterval(1);
     if (!glapi_load((void *(*)(const char *))SDL_GL_GetProcAddress, &missing)) {
@@ -1488,6 +1539,12 @@ int gui_main(app_state *a)
         if (a->open_piece > 0 && a->open_piece <= a->model.nchunks) {
             g.tab = 2;
             g.sel_piece = a->open_piece - 1;
+            g.last_nchunks = a->model.nchunks;
+        } else if (a->init_tab == 1) {
+            g.tab = 0;
+            g.last_nchunks = a->model.nchunks;
+        } else if (a->init_tab == 2 && a->model.nchunks > 1) {
+            g.tab = 1;
             g.last_nchunks = a->model.nchunks;
         }
         snprintf(title, sizeof(title), "logo3dprint - %s", a->svg_path);

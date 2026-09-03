@@ -1,0 +1,15 @@
+file: evenodd_arcs.svg
+paths: 4  shapes: 5  colours in SVG: 5  slots: 5  materials: 6/8
+logo size: 194.00 x 133.59 mm  (scale 0.76984 mm/unit)
+model bbox: 200.00 x 139.59 x 4.20 mm
+triangles: 4372
+base: #202020  2.0 mm thick  55797 mm^3  312 tris
+pieces: 2 (plate 96 x 76 mm)  every piece fits uncut up to 69% of this size  all pieces scaled to 69%
+plates: 2 (printer plate 100 x 80 mm, 8 mm between pieces)
+  chunk01: 73.5 x 96.0 mm, 188 tris  turned 90 deg on export  scaled to 69% on export  plate 1 at 50.0,40.0
+  chunk02: 72.3 x 96.0 mm, 4184 tris  turned 90 deg on export  scaled to 69% on export  plate 2 at 50.0,40.0
+slot 1: #333333  shapes 1  area 7823.1 mm^2  z 2.00-4.00 mm  volume 29260.0 mm^3  tris 1544  (body)
+slot 2: #2E86DE  shapes 1  area 4596.2 mm^2  z 4.00-4.20 mm  volume 919.2 mm^3  tris 964
+slot 3: #F1C40F  shapes 1  area 1029.5 mm^2  z 4.00-4.20 mm  volume 205.9 mm^3  tris 496
+slot 4: #E74C3C  shapes 1  area 696.1 mm^2  z 4.00-4.20 mm  volume 139.2 mm^3  tris 16
+slot 5: #8E44AD  shapes 1  area 485.2 mm^2  z 4.00-4.20 mm  volume 97.0 mm^3  tris 1040

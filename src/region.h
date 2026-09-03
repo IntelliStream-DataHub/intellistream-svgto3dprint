@@ -34,6 +34,12 @@ int region_union(region_t *out, const region_t *const *rs, int n);
 int region_subtract(region_t *out, const region_t *a, const region_t *const *subs, int nsubs);
 /* Intersection of two normalised regions. */
 int region_intersect(region_t *out, const region_t *a, const region_t *b);
+/* Clip a normalised region against an axis-aligned rectangle with
+ * Sutherland-Hodgman (per contour, independent of libtess2). Far more robust
+ * than region_intersect() for this common case: a whole design's per-colour
+ * region, with many disjoint and geometrically complex contours, clipped
+ * against one small tile rectangle. */
+int region_clip_rect(region_t *out, const region_t *in, double x0, double y0, double x1, double y1);
 /* Triangulate a normalised region. verts: x,y pairs; tris: 3 indices each. */
 int region_triangulate(const region_t *r, double **verts, int *nverts, int **tris, int *ntris);
 /* Signed area (positive for a normalised region). */

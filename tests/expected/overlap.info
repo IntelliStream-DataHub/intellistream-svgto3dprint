@@ -1,0 +1,9 @@
+file: overlap.svg
+paths: 4  shapes: 4  colours in SVG: 3  slots: 3  materials: 4/8
+logo size: 194.00 x 183.22 mm  (scale 2.15556 mm/unit)
+model bbox: 200.00 x 189.22 x 4.20 mm
+triangles: 1444
+base: #202020  2.0 mm thick  75673 mm^3  236 tris
+slot 1: #FF0000  shapes 2  area 16514.6 mm^2  z 2.00-4.00 mm  volume 56429.2 mm^3  tris 424  (body)
+slot 2: #0000FF  shapes 1  area 9841.4 mm^2  z 4.00-4.20 mm  volume 1968.3 mm^3  tris 772
+slot 3: #FFFF00  shapes 1  area 1858.6 mm^2  z 4.00-4.20 mm  volume 371.7 mm^3  tris 12

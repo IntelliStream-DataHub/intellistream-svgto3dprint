@@ -17,18 +17,27 @@ Turn an SVG logo into a multi-colour 3D-printable model. Written in C.
   height dimensions, printer bed outline, grid, bounding box, axis triad,
   cursor coordinate read-out and a two-point measuring tool.
 * Exports **3MF** (one object with one part per colour, extruder assignment
-  and colours embedded) and **STL** (one file per colour).
+  and colours embedded) and **STL** (one merged file, ready to print as a
+  single colour).
 * **Split into pieces** for prints larger than the printer: the logo is cut
   into letters/objects or plate-sized tiles, each piece gets its own base plate
   and file, pieces that only fit diagonally are turned automatically, and a
   *Pieces* tab shows every piece on its own plate. A 2 m wide logo becomes a
   set of 25 cm prints.
+* **Arranges the pieces on printer plates**: the pieces are packed onto as
+  few plates as possible (the *Pieces* tab labels each piece with its plate)
+  and exports can write one file per plate.
 * Headless command-line mode for scripting.
 
 The GUI is built on SDL3 + OpenGL 3.2 and the single-header Nuklear toolkit, so
 it runs on Linux, Windows and macOS.
 
 ![logo3dprint GUI showing a multi-colour logo model](docs/screenshot.png)
+
+The same logo at 1000 mm width, split into 14 letter-sized pieces that each
+get their own base plate and export file:
+
+![logo3dprint pieces view with the logo split into 14 pieces](docs/screenshot-pieces.png)
 
 ## Building
 
@@ -49,6 +58,11 @@ dependencies, on Ubuntu 24.04 for example:
         libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
         libxtst-dev libxkbcommon-dev libwayland-dev libdecor-0-dev \
         libgl-dev libegl-dev libdbus-1-dev
+
+The X11 extension packages (`libxi-dev`, `libxrandr-dev`, `libxtst-dev`, ...)
+are optional: when one is missing, CMake switches the SDL feature it enables
+off instead of failing and prints which ones. Install the package and re-run
+`cmake` to turn the feature back on.
 
 Then:
 
@@ -76,8 +90,10 @@ not found (`vcpkg install sdl3` also works).
     logo3dprint [logo.svg]
 
 * **File**: open an SVG (or drop one onto the window), export STL / 3MF.
-  Opening a file resets all model settings; the plate settings are kept. If no
-  native file dialog is available, path fields appear as a fallback.
+  With several pieces choose one file per piece, one file per printer plate
+  (the pieces arranged on it), or all pieces in one file. Opening a file
+  resets all model settings; the plate settings are kept. If no native file
+  dialog is available, path fields appear as a fallback.
 * **Size**: model width or height in millimetres, base plate included (the
   other follows the aspect ratio; default 200 mm wide), mirroring for face-down
   printing, curve tolerance.
@@ -91,7 +107,9 @@ not found (`vcpkg install sdl3` also works).
   into tiles, or keep and warn. "Resize logo to N mm" sets the model size to
   the largest one at which every piece fits unshrunk. The tab bar above the
   3D view then offers a *Pieces* grid (one viewport per piece: drag to orbit
-  all, wheel to zoom, double-click to open) and one tab per piece. Every piece
+  all, wheel to zoom, double-click to open) and one tab per piece. The pieces
+  are also arranged on printer plates, in piece order with *Piece spacing*
+  between them; every piece's label names its plate. Every piece
   is exported centred, turned and scaled exactly as shown, one file per piece.
   With a base plate, *Connected plates* gives every row of pieces one
   continuous strip of plate: neighbouring plates meet halfway between the
@@ -141,6 +159,8 @@ overlap in the print.
     logo3dprint --export logo.stl --per-color --stagger 0.6,0.2 --no-base logo.svg
     logo3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg   # big_chunk01.3mf ...
     logo3dprint --export big.3mf --width 2000 --split objects --fit-plate logo.svg      # resize so nothing is shrunk
+    logo3dprint --export big.3mf --width 2000 --split objects --single-file logo.svg    # all pieces in one file
+    logo3dprint --export big.3mf --width 2000 --split objects --per-plate --spacing 5 logo.svg   # big_plate01.3mf ... pieces arranged
     logo3dprint --export logo.3mf --no-layered --stagger 0.6,0.2 logo.svg              # colours side by side, staggered heights
 
 `logo3dprint --help` lists every option (sizes, per-slot heights, colour merge
@@ -160,17 +180,37 @@ threshold, material limit, base plate colour, mirroring).
 * **PrusaSlicer / SuperSlicer**: the component objects arrive with their
   extruders set; when asked whether to load the file as a single object with
   multiple parts, answer Yes, and No to importing print settings.
+* **Several pieces in Orca Slicer / Bambu Studio**: those slicers create
+  build plates only from their own project files (which carry your printer
+  settings) and load any other 3MF as geometry on one plate. Import the
+  pieces and press **Arrange**: the slicer creates plates as needed and
+  spreads the pieces over them. For exactly one piece per plate, import the
+  per-piece files onto separate plates.
+* **One file per printer plate** (`--per-plate`) writes the pieces of each
+  plate arranged on it, origin at the plate's front-left corner, for any
+  slicer; import one file per plate.
 * Other slicers get a standard 3MF with `basematerials` colours; assign the
   filaments per object manually if needed.
-* STL exports are one file per colour; import them together as one object
-  with multiple parts. If the slicer asks whether a thin colour layer "is too
-  small, scale to millimetres?", answer No.
+* STL exports one merged file by default (every colour fused into a single
+  printable shape, no manual steps needed). Use 3MF for multi-colour
+  printing: it is the only format here that reliably carries per-part
+  colours and extruders through a slicer's import. `--per-color` on the
+  command line writes one STL per colour instead, for slicers/workflows that
+  specifically need that; it needs a manual "load as one object with
+  multiple parts" step in the slicer (thin colour layers can otherwise be
+  auto-scaled 25x by an "is this in inches?" heuristic, or dropped
+  individually onto the bed, losing their stacking), and if the slicer asks
+  whether a thin layer "is too small, scale to millimetres?", answer No.
 * Text is rendered with the closest system font (Helvetica/Arial map to
   Liberation Sans, Arimo or DejaVu Sans on Linux). Pick a specific font file
   with "Text font..." or `--font FILE` for an exact match; draw.io exports
   with multi-line labels are handled.
 
 ## Windows and macOS builds
+
+The window icon is compiled in from `assets/logo3dprint.ico` (regenerate
+`src/icon_data.h` with `tools/mkicon.py` after changing it); on Windows the
+same file becomes the executable's icon.
 
 The code is portable C on SDL3. `CMakeLists.txt` builds with Visual Studio,
 MinGW or Xcode/clang and fetches SDL3 automatically. The GitHub Actions
@@ -213,8 +253,25 @@ its release from GitHub to redo a botched one before re-tagging.
 
     make test            # or: ctest --test-dir build
 
-Converts every example in `examples/` and checks that all exported meshes are
-closed (each edge used exactly twice).
+Two layers:
+
+* `tests/test_region.c`: unit tests for the polygon operations in
+  `src/region.c` (normalisation, union, subtraction, intersection, rectangle
+  clipping). They check areas and contour counts against known shapes, and
+  that every result is clean: no sliver edges, every vertex a real corner, no
+  bridged contours. That is what keeps the extruded meshes closed.
+* `tests/run_tests.sh`: converts every example in `examples/` through the
+  command line in the main modes (plain, split into objects and tiles, side
+  by side, no base, mirrored, ...), validates every exported mesh (closed
+  shells, 3MF part ranges, materials and extruders) and compares the
+  `--info` statistics with the recordings in `tests/expected/`, including
+  the plate arrangement; per-plate exports must keep every piece on its plate
+  without overlaps. The mesh checks need python3.
+
+The recordings pin the current geometry down. After a deliberate change in
+what the program produces, re-record them and review the diff:
+
+    UPDATE=1 sh tests/run_tests.sh ./logo3dprint
 
 ## Licence
 

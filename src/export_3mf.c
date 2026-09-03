@@ -9,7 +9,14 @@
  *    to filaments,
  *  - Metadata/Slic3r_PE_model.config with the triangle range and extruder of
  *    every part, which PrusaSlicer / SuperSlicer use to create a multi-part
- *    object with one extruder per part. */
+ *    object with one extruder per part.
+ *
+ * Several pieces in one file keep their assembled layout, or (plate >= 0)
+ * the pieces of one printer plate are placed on it. (Build plates cannot be
+ * assigned from here: Orca Slicer and Bambu Studio create plates only from
+ * their own project files, which carry the user's printer settings, and load
+ * any other 3MF as geometry on one plate; their Arrange command spreads the
+ * pieces over new plates.) */
 #include "export.h"
 #include "zip.h"
 
@@ -66,7 +73,7 @@ typedef struct {
     int asm_id;             /* id of the assembly object written for it */
 } obj_spec;
 
-int export_3mf(const model_t *m, const model_params *p, int chunk, const char *path, char *err, size_t errlen)
+int export_3mf(const model_t *m, const model_params *p, int chunk, int plate, const char *path, char *err, size_t errlen)
 {
     obj_spec *objs = NULL;
     int nobjs = 0, cobjs = 0;
@@ -76,23 +83,27 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, const char *p
     zip_writer z;
     int i, j, k, ok;
     int next_id;
-    int nchunk_objs = 0, ci;
+    int ci;
+    int all = plate >= 0 || chunk == -2;
 
     if (err && errlen) err[0] = 0;
     if (!m->meshes_valid) {
         if (err && errlen) snprintf(err, errlen, "nothing to export");
         return 0;
     }
-    /* which chunks, and one object per chunk or per (chunk, colour) */
-    for (ci = 0; ci < (chunk == -2 ? m->nchunks : 1); ci++) {
-        int ch = chunk == -2 ? ci : ((chunk >= 0 && chunk < m->nchunks) ? chunk : -1);
-        /* pieces in one file keep their assembled layout, scaled like the geometry */
-        double tx = chunk == -2 ? m->chunks[ci].place[0] * m->chunks[ci].scale : 0;
-        double ty = chunk == -2 ? m->chunks[ci].place[1] * m->chunks[ci].scale : 0;
-        const char *cname = ch >= 0 ? m->chunks[ch].name : "logo";
+    /* which chunks, where, and one object per chunk or per (chunk, colour) */
+    for (ci = 0; ci < (all ? m->nchunks : 1); ci++) {
+        int ch = all ? ci : ((chunk >= 0 && chunk < m->nchunks) ? chunk : -1);
+        const chunk_t *c = ch >= 0 ? &m->chunks[ch] : NULL;
+        double tx = 0, ty = 0;
+        const char *cname = c ? c->name : "logo";
         export_part parts[MAX_SLOTS + 1];
-        int n = export_collect_parts(m, p, ch, parts);
-        int np = p->export_color_objects ? n : (n > 0 ? 1 : 0);
+        int n, np;
+        if (plate >= 0 && c->on_plate != plate) continue;
+        if (plate >= 0) { tx = c->plate_pos[0]; ty = c->plate_pos[1]; }
+        else if (chunk == -2) { tx = c->place[0] * c->scale; ty = c->place[1] * c->scale; }   /* the assembled layout, scaled like the geometry */
+        n = export_collect_parts(m, p, ch, parts);
+        np = p->export_color_objects ? n : (n > 0 ? 1 : 0);
         for (j = 0; j < np; j++) {
             if (nobjs == cobjs) { cobjs = cobjs ? cobjs * 2 : 16; objs = (obj_spec *)realloc(objs, sizeof(obj_spec) * (size_t)cobjs); }
             objs[nobjs].chunk = ch;
@@ -101,7 +112,7 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, const char *p
             objs[nobjs].ty = ty;
             objs[nobjs].asm_id = 0;
             if (p->export_color_objects) {
-                if (chunk == -2 || m->nchunks > 1) snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s_%s", cname, parts[j].name);
+                if (all || m->nchunks > 1) snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s_%s", cname, parts[j].name);
                 else snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s", parts[j].name);
             } else snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s", cname);
             nobjs++;
@@ -111,7 +122,6 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, const char *p
             if (k == nmats && nmats < MAX_SLOTS + 1) mats[nmats++] = parts[j].rgb;
         }
         export_release_parts(parts, n);
-        nchunk_objs++;
     }
     if (nmats == 0 || nobjs == 0) {
         free(objs);
@@ -145,12 +155,12 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, const char *p
      * offers to merge them into one multi-part object. */
     next_id = 3;
     for (i = 0; i < nobjs; i++) {
-        export_part all[MAX_SLOTS + 1], parts[MAX_SLOTS + 1];
-        int nall = export_collect_parts(m, p, objs[i].chunk, all), n;
+        export_part allp[MAX_SLOTS + 1], parts[MAX_SLOTS + 1];
+        int nall = export_collect_parts(m, p, objs[i].chunk, allp), n;
         int first_id = next_id, asm_id;
-        if (objs[i].part >= 0) { n = objs[i].part < nall ? 1 : 0; if (n) parts[0] = all[objs[i].part]; }
-        else { n = nall; for (j = 0; j < n; j++) parts[j] = all[j]; }
-        if (n == 0) { export_release_parts(all, nall); continue; }
+        if (objs[i].part >= 0) { n = objs[i].part < nall ? 1 : 0; if (n) parts[0] = allp[objs[i].part]; }
+        else { n = nall; for (j = 0; j < n; j++) parts[j] = allp[j]; }
+        if (n == 0) { export_release_parts(allp, nall); continue; }
         for (j = 0; j < n; j++) {
             const mesh_t *mesh = export_part_mesh(&parts[j]);
             int mat = 0, id = next_id++;
@@ -189,7 +199,7 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, const char *p
         }
         sb_put(&bbs, "  </object>\n");
         objs[i].asm_id = asm_id;
-        export_release_parts(all, nall);
+        export_release_parts(allp, nall);
     }
     sb_put(&cfg, "</config>\n");
     sb_put(&bbs, "</config>\n");

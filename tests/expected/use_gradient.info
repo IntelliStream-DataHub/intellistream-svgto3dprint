@@ -1,0 +1,13 @@
+file: use_gradient.svg
+paths: 6  shapes: 7  colours in SVG: 5  slots: 5  materials: 6/8
+text: 1 element(s) rendered with /usr/share/fonts/truetype/katex/KaTeX_SansSerif-Regular.ttf
+note: 1 gradient fill(s) replaced by their average colour
+logo size: 194.00 x 194.00 mm  (scale 0.97000 mm/unit)
+model bbox: 200.00 x 200.00 x 4.20 mm
+triangles: 6364
+base: #202020  2.0 mm thick  79984 mm^3  236 tris
+slot 1: #800080  shapes 1  area 29081.5 mm^2  z 2.00-4.00 mm  volume 75272.0 mm^3  tris 12  (body)
+slot 2: #00AA00  shapes 1  area 2365.4 mm^2  z 4.00-4.20 mm  volume 473.1 mm^3  tris 44
+slot 3: #FFFFFF  shapes 1  area 2659.0 mm^2  z 4.00-4.20 mm  volume 531.8 mm^3  tris 36
+slot 4: #000000  shapes 3  area 1973.9 mm^2  z 4.00-4.20 mm  volume 394.8 mm^3  tris 5368
+slot 5: #FF00FF  shapes 1  area 1556.2 mm^2  z 4.00-4.20 mm  volume 311.2 mm^3  tris 668
