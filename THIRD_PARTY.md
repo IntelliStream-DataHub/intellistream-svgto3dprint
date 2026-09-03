@@ -13,3 +13,7 @@ Local modifications:
   and `TESS_MAX_VALID_INPUT_VALUE` raised accordingly, so millimetre geometry keeps
   full precision through repeated boolean operations.
 * `third_party/libtess2/*.c`: include path of `tesselator.h` flattened.
+* `third_party/nuklear/nuklear.h`: `nk_color_picker_behavior()` keeps tracking
+  a drag that started on the colour matrix or a bar after the mouse leaves it
+  (clamped), so pure white and other extremes can be reached by dragging past
+  the edge. Guarded by `tests/test_ui.c`.

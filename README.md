@@ -253,13 +253,16 @@ its release from GitHub to redo a botched one before re-tagging.
 
     make test            # or: ctest --test-dir build
 
-Two layers:
+Three layers:
 
 * `tests/test_region.c`: unit tests for the polygon operations in
   `src/region.c` (normalisation, union, subtraction, intersection, rectangle
   clipping). They check areas and contour counts against known shapes, and
   that every result is clean: no sliver edges, every vertex a real corner, no
   bridged contours. That is what keeps the extruded meshes closed.
+* `tests/test_ui.c`: headless checks of the Nuklear widgets the GUI relies
+  on, with input fed by hand (the colour picker keeps tracking a drag that
+  leaves it, so pure white is reachable).
 * `tests/run_tests.sh`: converts every example in `examples/` through the
   command line in the main modes (plain, split into objects and tiles, side
   by side, no base, mirrored, ...), validates every exported mesh (closed

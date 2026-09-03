@@ -145,8 +145,17 @@ if(NOT MSVC)
   target_link_libraries(test_region PRIVATE m)
 endif()
 
+add_executable(test_ui tests/test_ui.c src/nk_impl.c)
+target_include_directories(test_ui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nuklear)
+if(NOT MSVC)
+  set_source_files_properties(src/nk_impl.c PROPERTIES COMPILE_OPTIONS "-w")
+  target_compile_options(test_ui PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  target_link_libraries(test_ui PRIVATE m)
+endif()
+
 enable_testing()
 add_test(NAME region_unit COMMAND test_region)
+add_test(NAME ui_unit COMMAND test_ui)
 add_test(NAME headless_exports
   COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh $<TARGET_FILE:logo3dprint>
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

@@ -65,8 +65,15 @@ TEST_REGION = $(BUILD)/test_region
 $(TEST_REGION): tests/test_region.c src/region.c src/region.h $(TESS_OBJ) | $(BUILD)
 	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 -o $@ tests/test_region.c src/region.c $(TESS_OBJ) -lm
 
-test: logo3dprint $(TEST_REGION)
+# Headless widget tests: Nuklear only, no window.
+TEST_UI = $(BUILD)/test_ui
+
+$(TEST_UI): tests/test_ui.c src/nk_config.h $(NK_OBJ) | $(BUILD)
+	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/nuklear -o $@ tests/test_ui.c $(NK_OBJ) -lm
+
+test: logo3dprint $(TEST_REGION) $(TEST_UI)
 	$(TEST_REGION)
+	$(TEST_UI)
 	sh tests/run_tests.sh ./logo3dprint
 
 clean:

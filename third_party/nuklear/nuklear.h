@@ -29829,21 +29829,28 @@ nk_color_picker_behavior(nk_flags *state,
     NK_ASSERT(hue_bar);
     NK_ASSERT(color);
 
+    /* logo3dprint: a drag that started on the matrix or a bar keeps
+     * tracking the mouse after it leaves the widget (like a slider), with the
+     * position clamped, so the extremes such as pure white are reachable by
+     * dragging past the edge instead of hitting the last pixel. */
     /* color matrix */
     nk_colorf_hsva_fv(hsva, *color);
-    if (nk_button_behavior(state, *matrix, in, NK_BUTTON_REPEATER)) {
+    if (nk_button_behavior(state, *matrix, in, NK_BUTTON_REPEATER) ||
+        nk_input_has_mouse_click_down_in_rect(in, NK_BUTTON_LEFT, *matrix, nk_true)) {
         hsva[1] = NK_SATURATE((in->mouse.pos.x - matrix->x) / (matrix->w-1));
         hsva[2] = 1.0f - NK_SATURATE((in->mouse.pos.y - matrix->y) / (matrix->h-1));
         value_changed = hsv_changed = 1;
     }
     /* hue bar */
-    if (nk_button_behavior(state, *hue_bar, in, NK_BUTTON_REPEATER)) {
+    if (nk_button_behavior(state, *hue_bar, in, NK_BUTTON_REPEATER) ||
+        nk_input_has_mouse_click_down_in_rect(in, NK_BUTTON_LEFT, *hue_bar, nk_true)) {
         hsva[0] = NK_SATURATE((in->mouse.pos.y - hue_bar->y) / (hue_bar->h-1));
         value_changed = hsv_changed = 1;
     }
     /* alpha bar */
     if (alpha_bar) {
-        if (nk_button_behavior(state, *alpha_bar, in, NK_BUTTON_REPEATER)) {
+        if (nk_button_behavior(state, *alpha_bar, in, NK_BUTTON_REPEATER) ||
+            nk_input_has_mouse_click_down_in_rect(in, NK_BUTTON_LEFT, *alpha_bar, nk_true)) {
             hsva[3] = 1.0f - NK_SATURATE((in->mouse.pos.y - alpha_bar->y) / (alpha_bar->h-1));
             value_changed = 1;
         }
@@ -29995,7 +30002,10 @@ nk_color_pick(struct nk_context * ctx, struct nk_colorf *color,
     layout = win->layout;
     state = nk_widget(&bounds, ctx);
     if (!state) return 0;
-    in = (state == NK_WIDGET_ROM || state == NK_WIDGET_DISABLED || layout->flags & NK_WINDOW_ROM) ? 0 : &ctx->input;
+    /* logo3dprint: keep the input while a drag that started on the picker
+     * goes on outside it (sliders do the same), see nk_color_picker_behavior */
+    in = (state == NK_WIDGET_DISABLED || layout->flags & NK_WINDOW_ROM || (state == NK_WIDGET_ROM &&
+          !nk_input_has_mouse_click_down_in_rect(&ctx->input, NK_BUTTON_LEFT, bounds, nk_true))) ? 0 : &ctx->input;
     return nk_do_color_picker(&ctx->last_widget_state, &win->buffer, color, fmt, bounds,
                 nk_vec2(0,0), in, config->font);
 }
