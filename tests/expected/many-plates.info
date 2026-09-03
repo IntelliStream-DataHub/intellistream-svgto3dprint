@@ -3,26 +3,25 @@ paths: 12  shapes: 12  colours in SVG: 12  slots: 7  materials: 8/8
 note: 12 colours merged into 7 slots
 logo size: 194.00 x 64.67 mm  (scale 1.61667 mm/unit)
 model bbox: 200.00 x 70.67 x 4.20 mm
-triangles: 1480
-base: #202020  2.0 mm thick  28111 mm^3  880 tris
+base: #202020  2.0 mm thick  28111 mm^3
 pieces: 12 (plate 56 x 56 mm)  every piece fits uncut up to 26% of this size
 plates: 12 (printer plate 60 x 60 mm, 5 mm between pieces)
-  chunk01: 35.3 x 35.3 mm, 132 tris  plate 1 at 19.7,19.7
-  chunk02: 35.3 x 44.2 mm, 132 tris  plate 2 at 19.7,24.1
-  chunk03: 41.2 x 35.3 mm, 112 tris  plate 3 at 22.6,19.7
-  chunk04: 41.2 x 43.4 mm, 112 tris  plate 4 at 22.6,23.7
-  chunk05: 41.2 x 35.3 mm, 112 tris  plate 5 at 22.6,19.7
-  chunk06: 41.2 x 43.4 mm, 112 tris  plate 6 at 22.6,23.7
-  chunk07: 41.2 x 35.3 mm, 120 tris  plate 7 at 22.6,19.7
-  chunk08: 41.2 x 43.4 mm, 120 tris  plate 8 at 22.6,23.7
-  chunk09: 41.2 x 35.3 mm, 120 tris  plate 9 at 22.6,19.7
-  chunk10: 41.2 x 43.4 mm, 120 tris  plate 10 at 22.6,23.7
-  chunk11: 44.2 x 35.3 mm, 144 tris  plate 11 at 24.1,19.7
-  chunk12: 44.2 x 44.2 mm, 144 tris  plate 12 at 24.1,24.1
-slot 1: #FE0101  shapes 4  area 4181.8 mm^2  z 2.00-4.00 mm  volume 25090.7 mm^3  tris 272  (body)
-slot 2: #0101FE  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3  tris 80
-slot 3: #01FE01  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3  tris 80
-slot 4: #FFFFFF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3  tris 48
-slot 5: #00FFFF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3  tris 48
-slot 6: #FF00FF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3  tris 48
-slot 7: #000000  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3  tris 24
+  chunk01: 35.3 x 35.3 mm,  plate 1 at 19.7,19.7
+  chunk02: 35.3 x 44.2 mm,  plate 2 at 19.7,24.1
+  chunk03: 41.2 x 35.3 mm,  plate 3 at 22.6,19.7
+  chunk04: 41.2 x 43.4 mm,  plate 4 at 22.6,23.7
+  chunk05: 41.2 x 35.3 mm,  plate 5 at 22.6,19.7
+  chunk06: 41.2 x 43.4 mm,  plate 6 at 22.6,23.7
+  chunk07: 41.2 x 35.3 mm,  plate 7 at 22.6,19.7
+  chunk08: 41.2 x 43.4 mm,  plate 8 at 22.6,23.7
+  chunk09: 41.2 x 35.3 mm,  plate 9 at 22.6,19.7
+  chunk10: 41.2 x 43.4 mm,  plate 10 at 22.6,23.7
+  chunk11: 44.2 x 35.3 mm,  plate 11 at 24.1,19.7
+  chunk12: 44.2 x 44.2 mm,  plate 12 at 24.1,24.1
+slot 1: #808080  shapes 3  area 3136.3 mm^2  z 2.00-4.00 mm  volume 25090.7 mm^3  (body)
+slot 2: #0000FF  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
+slot 3: #00FF00  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
+slot 4: #FF0000  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
+slot 5: #000000  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3
+slot 6: #00FFFF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3
+slot 7: #FF00FF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3

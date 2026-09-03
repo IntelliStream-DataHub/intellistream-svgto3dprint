@@ -3,3 +3,4 @@ build-*/
 logo3dprint
 *.o
 *.ppm
+__pycache__/

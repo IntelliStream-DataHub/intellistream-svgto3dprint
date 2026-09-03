@@ -3,8 +3,7 @@ paths: 12  shapes: 12  colours in SVG: 12  slots: 3  materials: 4/4
 note: 12 colours merged into 3 slots
 logo size: 194.00 x 64.67 mm  (scale 1.61667 mm/unit)
 model bbox: 200.00 x 70.67 x 4.20 mm
-triangles: 368
-base: #202020  2.0 mm thick  28251 mm^3  236 tris
-slot 1: #FE0101  shapes 9  area 9409.0 mm^2  z 2.00-4.00 mm  volume 25090.7 mm^3  tris 100  (body)
-slot 2: #0101FE  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3  tris 20
-slot 3: #FFFFFF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3  tris 12
+base: #202020  2.0 mm thick  28251 mm^3
+slot 1: #808080  shapes 9  area 9409.0 mm^2  z 2.00-4.00 mm  volume 25090.7 mm^3  (body)
+slot 2: #0000FF  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
+slot 3: #000000  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3
