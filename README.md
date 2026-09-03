@@ -176,6 +176,25 @@ workflow in `.github/workflows/build.yml` builds Linux, Windows and a universal
 macOS executable on every push and publishes them as artifacts; push the
 repository to GitHub to get downloadable binaries without a local toolchain.
 
+### Cross-compiling the Windows build on Linux
+
+Install the mingw-w64 cross toolchain:
+
+    sudo apt install mingw-w64      # Debian / Ubuntu
+    sudo dnf install mingw64-gcc    # Fedora
+
+Then configure with the toolchain file in `cmake/mingw-w64.cmake`, which
+points CMake at the mingw-w64 compilers and lets it cross-fetch and build
+SDL3 for Windows:
+
+    cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-win -j
+    file build-win/logo3dprint.exe   # PE32+ executable (console) x86-64, for MS Windows
+
+`build-win/logo3dprint.exe` runs under Wine or on real Windows; the tests
+(`tests/run_tests.sh`) need a Windows host or Wine to run, since ctest
+invokes the freshly built executable directly.
+
 ## Releases
 
     make release VERSION=v1.2.3

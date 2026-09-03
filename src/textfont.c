@@ -27,11 +27,20 @@ struct textfont {
 static char **font_files = NULL;
 static int nfont_files = 0, cfont_files = 0, files_scanned = 0;
 
+static int ext_is(const char *ext, const char *want)
+{
+    while (*ext && *want) {
+        if (tolower((unsigned char)*ext) != tolower((unsigned char)*want)) return 0;
+        ext++; want++;
+    }
+    return *ext == *want;
+}
+
 static void add_font_file(const char *path)
 {
     size_t n = strlen(path);
     const char *ext = n > 4 ? path + n - 4 : "";
-    if (strcasecmp(ext, ".ttf") && strcasecmp(ext, ".otf") && strcasecmp(ext, ".ttc")) return;
+    if (!ext_is(ext, ".ttf") && !ext_is(ext, ".otf") && !ext_is(ext, ".ttc")) return;
     if (nfont_files == cfont_files) {
         cfont_files = cfont_files ? cfont_files * 2 : 256;
         font_files = (char **)realloc(font_files, sizeof(char *) * (size_t)cfont_files);
