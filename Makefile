@@ -4,6 +4,7 @@
 #   make            build ./logo3dprint
 #   make test       run the headless export tests
 #   make clean
+#   make release VERSION=v1.2.3   tag and push a release (see below)
 
 CC      ?= cc
 CFLAGS  ?= -O2 -g
@@ -64,4 +65,15 @@ test: logo3dprint
 clean:
 	rm -rf $(BUILD) logo3dprint
 
-.PHONY: all clean test
+# Tags and pushes a release; .github/workflows/release.yml then builds
+# Linux/Windows/macOS binaries and publishes them to a GitHub Release.
+release:
+	@test -n "$(VERSION)" || { echo "Usage: make release VERSION=v1.2.3" >&2; exit 1; }
+	@echo "$(VERSION)" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$$' || \
+		{ echo "VERSION must look like v1.2.3, got '$(VERSION)'" >&2; exit 1; }
+	@git diff --quiet && git diff --cached --quiet || \
+		{ echo "Working tree not clean, commit or stash first" >&2; exit 1; }
+	git tag -a "$(VERSION)" -m "$(VERSION)"
+	git push origin "$(VERSION)"
+
+.PHONY: all clean test release

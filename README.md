@@ -178,14 +178,13 @@ repository to GitHub to get downloadable binaries without a local toolchain.
 
 ## Releases
 
-Pushing a version tag (`v1.2.3`) triggers `.github/workflows/release.yml`,
-which builds Linux, Windows and macOS binaries and publishes them to a
-GitHub Release:
+    make release VERSION=v1.2.3
 
-    git tag v1.2.3
-    git push origin v1.2.3
+tags and pushes the release (the working tree must be clean). Pushing a
+version tag triggers `.github/workflows/release.yml`, which builds Linux,
+Windows and macOS binaries and publishes them to a GitHub Release with notes
+generated from the commits since the previous tag.
 
-The release notes are generated from the commits since the previous tag.
 Delete a tag (`git tag -d v1.2.3 && git push origin :refs/tags/v1.2.3`) and
 its release from GitHub to redo a botched one before re-tagging.
 
