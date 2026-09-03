@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="60mm" viewBox="0 0 200 120">
+  <style>
+    .bg { fill: #1E3A8A; }
+    .ring { fill: none; stroke: #F59E0B; stroke-width: 8; }
+    .dot { fill: #EF4444; }
+  </style>
+  <rect class="bg" x="10" y="10" width="180" height="100" rx="12"/>
+  <circle class="ring" cx="60" cy="60" r="30"/>
+  <circle class="dot" cx="60" cy="60" r="12"/>
+  <path d="M110 30 L180 30 L145 95 Z" fill="#10B981"/>
+  <path d="M120 40 h50 v10 h-50 z" fill="#FFFFFF"/>
+</svg>

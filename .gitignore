@@ -1,0 +1,5 @@
+build/
+build-*/
+logo3dprint
+*.o
+*.ppm

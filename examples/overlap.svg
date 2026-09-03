@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- painter's order: the blue circle must cut a hole in the red square,
+       and the yellow square on top must cut both -->
+  <rect x="10" y="10" width="60" height="60" fill="red"/>
+  <circle cx="60" cy="60" r="30" fill="blue"/>
+  <rect x="45" y="45" width="20" height="20" fill="yellow"/>
+  <rect x="5" y="80" width="90" height="15" fill="red"/>
+</svg>

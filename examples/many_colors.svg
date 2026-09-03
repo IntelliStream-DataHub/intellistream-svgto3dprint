@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40">
+  <!-- 12 colours: forces merging down to 8 materials -->
+  <rect x="0"  y="0" width="10" height="40" fill="#ff0000"/>
+  <rect x="10" y="0" width="10" height="40" fill="#fe0101"/>
+  <rect x="20" y="0" width="10" height="40" fill="#00ff00"/>
+  <rect x="30" y="0" width="10" height="40" fill="#01fe01"/>
+  <rect x="40" y="0" width="10" height="40" fill="#0000ff"/>
+  <rect x="50" y="0" width="10" height="40" fill="#0101fe"/>
+  <rect x="60" y="0" width="10" height="40" fill="#ffff00"/>
+  <rect x="70" y="0" width="10" height="40" fill="#00ffff"/>
+  <rect x="80" y="0" width="10" height="40" fill="#ff00ff"/>
+  <rect x="90" y="0" width="10" height="40" fill="#808080"/>
+  <rect x="100" y="0" width="10" height="40" fill="#ffffff"/>
+  <rect x="110" y="0" width="10" height="40" fill="#000000"/>
+</svg>

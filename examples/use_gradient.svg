@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff0000"/>
+      <stop offset="1" style="stop-color:#0000ff"/>
+    </linearGradient>
+    <g id="star">
+      <polygon points="50,5 61,40 98,40 68,62 79,96 50,75 21,96 32,62 2,40 39,40"/>
+    </g>
+  </defs>
+  <rect width="200" height="200" fill="url(#grad1)"/>
+  <use xlink:href="#star" x="0" y="0" fill="#ffffff"/>
+  <use href="#star" x="100" y="100" fill="#00aa00" transform="scale(1)"/>
+  <ellipse cx="150" cy="50" rx="30" ry="20" style="fill:#ff00ff;stroke:#000000;stroke-width:3"/>
+  <line x1="10" y1="190" x2="190" y2="150" stroke="#000" stroke-width="6" stroke-linecap="round"/>
+  <text x="20" y="120" font-size="20">Text is skipped</text>
+</svg>
