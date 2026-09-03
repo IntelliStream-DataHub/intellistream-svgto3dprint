@@ -27,6 +27,15 @@ mkdir -p "$OUT" "$EXPECTED"
 PY=
 command -v python3 > /dev/null 2>&1 && PY=python3
 fail=0
+# Text is rendered with a system font, so examples with <text> are pinned to
+# Liberation Sans for the recorded --info expectations; where it is not
+# installed only their meshes are checked.
+FONT=
+for f in /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf /usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf \
+         /usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf /usr/share/fonts/liberation/LiberationSans-Regular.ttf \
+         /usr/share/fonts/TTF/LiberationSans-Regular.ttf /usr/share/fonts/liberation-fonts/LiberationSans-Regular.ttf; do
+    if [ -f "$f" ]; then FONT=$f; break; fi
+done
 
 fails() { echo "FAIL: $*"; fail=1; }
 
@@ -67,8 +76,9 @@ info() {
         fails "--info $*"
         return
     fi
-    # the first line names the input file with a path; keep the basename only
-    sed 's|^file: .*/|file: |' "$OUT/$name.raw" > "$OUT/$name.info"
+    # the first line names the input file with a path, the text line the font
+    # file; keep the basenames only
+    sed 's|^file: .*/|file: |; s|rendered with .*/|rendered with |' "$OUT/$name.raw" > "$OUT/$name.info"
     if [ -n "${UPDATE:-}" ]; then
         cp "$OUT/$name.info" "$EXPECTED/$name.info"
         echo "recorded tests/expected/$name.info"
@@ -104,7 +114,16 @@ run() {
 # --- every example in its default form, plus one STL per colour -----------
 for svg in "$EX"/*.svg; do
     name=$(basename "$svg" .svg)
-    run "$name" "$svg"
+    if grep -q "<text" "$svg"; then
+        if [ -n "$FONT" ]; then
+            run "$name" --font "$FONT" "$svg"
+        else
+            echo "skip: $name --info comparison (Liberation Sans not installed; text metrics depend on the font)"
+            convert "$name" "$svg"
+        fi
+    else
+        run "$name" "$svg"
+    fi
     "$BIN" --export "$OUT/$name-percolor.stl" --per-color "$svg" > /dev/null || fails "--per-color $name"
     checkstl "$OUT/$name-percolor_"*.stl
 done

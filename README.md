@@ -269,7 +269,9 @@ Three layers:
   shells, 3MF part ranges, materials and extruders) and compares the
   `--info` statistics with the recordings in `tests/expected/`, including
   the plate arrangement; per-plate exports must keep every piece on its plate
-  without overlaps. The mesh checks need python3.
+  without overlaps. Examples with `<text>` are rendered with Liberation Sans
+  so the recordings do not depend on the machine's fonts (without it only
+  their meshes are checked). The mesh checks need python3.
 
 The recordings pin the current geometry down. After a deliberate change in
 what the program produces, re-record them and review the diff:

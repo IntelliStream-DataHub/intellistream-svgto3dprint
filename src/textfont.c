@@ -161,6 +161,16 @@ static const char *sans_list[] = {"liberationsans", "arimo", "dejavusans", "free
 static const char *serif_list[] = {"liberationserif", "tinos", "dejavuserif", "freeserif", "notoserif", "timesnewroman", "times", "georgia", NULL};
 static const char *mono_list[] = {"liberationmono", "cousine", "dejavusansmono", "freemono", "notosansmono", "couriernew", "courier", "consolas", NULL};
 
+/* CSS generic families and vague system names: never matched against file
+ * names (a font called "SansSerif" would win over Liberation Sans), only
+ * resolved through the substitute lists. */
+static int is_generic_family(const char *fam)
+{
+    return !strcmp(fam, "sansserif") || !strcmp(fam, "serif") || !strcmp(fam, "monospace") || !strcmp(fam, "cursive") ||
+           !strcmp(fam, "fantasy") || !strcmp(fam, "system") || !strcmp(fam, "systemui") || !strcmp(fam, "uisansserif") ||
+           !strcmp(fam, "uiserif") || !strcmp(fam, "uimonospace") || !strcmp(fam, "math") || !strcmp(fam, "emoji");
+}
+
 static const char **alias_list(const char *fam)
 {
     if (!strcmp(fam, "sansserif") || !strcmp(fam, "helvetica") || !strcmp(fam, "helveticaneue") || !strcmp(fam, "arial") ||
@@ -205,8 +215,10 @@ static const char *find_font_file(const char *family, int bold, int italic)
         one[len] = 0;
         normalise(one, fam, sizeof(fam));
         if (fam[0]) {
-            found = best_file_for(fam, bold, italic, &score);
-            if (found && score > 0) return found;
+            if (!is_generic_family(fam)) {
+                found = best_file_for(fam, bold, italic, &score);
+                if (found && score > 0) return found;
+            }
             aliases = alias_list(fam);
             for (k = 0; aliases[k]; k++) {
                 found = best_file_for(aliases[k], bold, italic, &score);
