@@ -176,6 +176,19 @@ workflow in `.github/workflows/build.yml` builds Linux, Windows and a universal
 macOS executable on every push and publishes them as artifacts; push the
 repository to GitHub to get downloadable binaries without a local toolchain.
 
+## Releases
+
+Pushing a version tag (`v1.2.3`) triggers `.github/workflows/release.yml`,
+which builds Linux, Windows and macOS binaries and publishes them to a
+GitHub Release:
+
+    git tag v1.2.3
+    git push origin v1.2.3
+
+The release notes are generated from the commits since the previous tag.
+Delete a tag (`git tag -d v1.2.3 && git push origin :refs/tags/v1.2.3`) and
+its release from GitHub to redo a botched one before re-tagging.
+
 ## Tests
 
     make test            # or: ctest --test-dir build

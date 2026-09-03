@@ -1,0 +1,77 @@
+# Builds logo3dprint for Linux, Windows and macOS and publishes the
+# executables to a GitHub Release when a version tag (v1.2.3) is pushed.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libx11-dev libxext-dev \
+            libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev libgl-dev libegl-dev libdbus-1-dev \
+            libpulse-dev libasound2-dev libpipewire-0.3-dev
+      - run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: tar -C build -czf logo3dprint-${{ github.ref_name }}-linux-x86_64.tar.gz logo3dprint
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: logo3dprint-*.tar.gz
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --config Release
+      - name: Package
+        run: Compress-Archive -Path build/Release/logo3dprint.exe -DestinationPath logo3dprint-${{ github.ref_name }}-windows-x86_64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: logo3dprint-*.zip
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+      - run: cmake --build build
+      - run: ctest --test-dir build --output-on-failure
+      - name: Package
+        run: tar -C build -czf logo3dprint-${{ github.ref_name }}-macos-universal.tar.gz logo3dprint
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: logo3dprint-*.tar.gz
+
+  publish:
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
