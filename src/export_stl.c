@@ -104,7 +104,7 @@ static int write_stl_file(const char *path, const export_part *parts, int nparts
         return 0;
     }
     memset(header, 0, sizeof(header));
-    snprintf(header, sizeof(header), "logo3dprint binary STL");
+    snprintf(header, sizeof(header), "intellistream-svgto3dprint binary STL");
     fwrite(header, 1, 80, f);
     for (i = 0; i < nparts; i++) total += (unsigned)export_part_mesh(&parts[i])->nt;
     {

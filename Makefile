@@ -1,10 +1,12 @@
-# logo3dprint - SVG logo to multi-colour 3D print model
+# intellistream-svgto3dprint - SVG logo to multi-colour 3D print model
 #
 # Requires SDL3 (pkg-config "sdl3"). Nuklear and libtess2 are vendored.
-#   make            build ./logo3dprint
+#   make            build ./intellistream-svgto3dprint
 #   make test       run the unit tests and the headless CLI regression tests
 #   make clean
 #   make release VERSION=v1.2.3   tag and push a release (see below)
+
+TARGET = intellistream-svgto3dprint
 
 CC      ?= cc
 CFLAGS  ?= -O2 -g
@@ -47,9 +49,9 @@ GUI_OBJ  = $(patsubst src/%.c,$(BUILD)/%.o,$(GUI_SRC))
 NK_OBJ   = $(patsubst src/%.c,$(BUILD)/%.o,$(NK_SRC))
 TESS_OBJ = $(patsubst third_party/libtess2/%.c,$(BUILD)/tess2_%.o,$(TESS_SRC))
 
-all: logo3dprint
+all: $(TARGET)
 
-logo3dprint: $(CORE_OBJ) $(GUI_OBJ) $(NK_OBJ) $(TESS_OBJ)
+$(TARGET): $(CORE_OBJ) $(GUI_OBJ) $(NK_OBJ) $(TESS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(SDL_LIBS) $(PLATFORM_LIBS)
 
 $(BUILD)/%.o: src/%.c | $(BUILD)
@@ -84,13 +86,13 @@ TEST_UI = $(BUILD)/test_ui
 $(TEST_UI): tests/test_ui.c src/nk_config.h $(NK_OBJ) | $(BUILD)
 	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/nuklear -o $@ tests/test_ui.c $(NK_OBJ) -lm
 
-test: logo3dprint $(TEST_REGION) $(TEST_UI)
+test: $(TARGET) $(TEST_REGION) $(TEST_UI)
 	$(TEST_REGION)
 	$(TEST_UI)
-	sh tests/run_tests.sh ./logo3dprint
+	sh tests/run_tests.sh ./$(TARGET)
 
 clean:
-	rm -rf $(BUILD) logo3dprint
+	rm -rf $(BUILD) $(TARGET)
 
 # Tags and pushes a release; .github/workflows/release.yml then builds
 # Linux/Windows/macOS binaries and publishes them to a GitHub Release.

@@ -92,7 +92,7 @@ static int write_3mf(const export_object *objs, int nobjs, const char *path, cha
     sb_put(&model, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     sb_put(&model, "<model unit=\"millimeter\" xml:lang=\"en-US\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\""
                    " xmlns:m=\"http://schemas.microsoft.com/3dmanufacturing/material/2015/02\">\n");
-    sb_put(&model, " <metadata name=\"Application\">logo3dprint</metadata>\n");
+    sb_put(&model, " <metadata name=\"Application\">intellistream-svgto3dprint</metadata>\n");
     sb_put(&model, " <metadata name=\"Title\">logo</metadata>\n");
     sb_put(&model, " <resources>\n");
     sb_put(&model, "  <basematerials id=\"1\">\n");

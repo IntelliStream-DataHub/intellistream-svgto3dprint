@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a `logo3dprint --info` output with the recorded expectation.
+"""Compare a `intellistream-svgto3dprint --info` output with the recorded expectation.
 
 Text must match exactly and so must integer counts (paths, shapes, slots,
 pieces). Numbers with a decimal point (sizes, areas, volumes) may differ by

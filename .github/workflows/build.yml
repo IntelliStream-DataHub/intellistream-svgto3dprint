@@ -1,4 +1,4 @@
-# Builds logo3dprint for Linux, Windows and macOS and uploads the executables
+# Builds intellistream-svgto3dprint for Linux, Windows and macOS and uploads the executables
 # as workflow artifacts.  SDL3 is fetched and built by CMake on every platform.
 name: build
 
@@ -24,8 +24,8 @@ jobs:
       - run: ctest --test-dir build --output-on-failure
       - uses: actions/upload-artifact@v4
         with:
-          name: logo3dprint-linux-x86_64
-          path: build/logo3dprint
+          name: intellistream-svgto3dprint-linux-x86_64
+          path: build/intellistream-svgto3dprint
 
   windows:
     runs-on: windows-latest
@@ -35,8 +35,8 @@ jobs:
       - run: cmake --build build --config Release
       - uses: actions/upload-artifact@v4
         with:
-          name: logo3dprint-windows-x86_64
-          path: build/Release/logo3dprint.exe
+          name: intellistream-svgto3dprint-windows-x86_64
+          path: build/Release/intellistream-svgto3dprint.exe
 
   macos:
     runs-on: macos-latest
@@ -47,5 +47,5 @@ jobs:
       - run: ctest --test-dir build --output-on-failure
       - uses: actions/upload-artifact@v4
         with:
-          name: logo3dprint-macos-universal
-          path: build/logo3dprint
+          name: intellistream-svgto3dprint-macos-universal
+          path: build/intellistream-svgto3dprint

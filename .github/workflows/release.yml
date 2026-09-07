@@ -1,4 +1,4 @@
-# Builds logo3dprint for Linux, Windows and macOS and publishes the
+# Builds intellistream-svgto3dprint for Linux, Windows and macOS and publishes the
 # executables to a GitHub Release when a version tag (v1.2.3) is pushed.
 name: release
 
@@ -26,11 +26,11 @@ jobs:
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
       - name: Package
-        run: tar -C build -czf logo3dprint-${{ github.ref_name }}-linux-x86_64.tar.gz logo3dprint
+        run: tar -C build -czf intellistream-svgto3dprint-${{ github.ref_name }}-linux-x86_64.tar.gz intellistream-svgto3dprint
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux
-          path: logo3dprint-*.tar.gz
+          path: intellistream-svgto3dprint-*.tar.gz
 
   windows:
     runs-on: windows-latest
@@ -39,11 +39,11 @@ jobs:
       - run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --config Release
       - name: Package
-        run: Compress-Archive -Path build/Release/logo3dprint.exe -DestinationPath logo3dprint-${{ github.ref_name }}-windows-x86_64.zip
+        run: Compress-Archive -Path build/Release/intellistream-svgto3dprint.exe -DestinationPath intellistream-svgto3dprint-${{ github.ref_name }}-windows-x86_64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
-          path: logo3dprint-*.zip
+          path: intellistream-svgto3dprint-*.zip
 
   macos:
     runs-on: macos-latest
@@ -53,11 +53,11 @@ jobs:
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
       - name: Package
-        run: tar -C build -czf logo3dprint-${{ github.ref_name }}-macos-universal.tar.gz logo3dprint
+        run: tar -C build -czf intellistream-svgto3dprint-${{ github.ref_name }}-macos-universal.tar.gz intellistream-svgto3dprint
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos
-          path: logo3dprint-*.tar.gz
+          path: intellistream-svgto3dprint-*.tar.gz
 
   publish:
     needs: [linux, windows, macos]

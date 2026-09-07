@@ -9,7 +9,7 @@
 static void usage(FILE *f)
 {
     fprintf(f,
-        "usage: logo3dprint [options] [logo.svg]\n"
+        "usage: intellistream-svgto3dprint [options] [logo.svg]\n"
         "\n"
         "Without --export or --info the GUI starts (with the SVG loaded when given).\n"
         "\n"

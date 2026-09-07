@@ -1,6 +1,6 @@
 build/
 build-*/
-logo3dprint
+intellistream-svgto3dprint
 *.o
 *.ppm
 __pycache__/

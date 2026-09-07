@@ -1,4 +1,4 @@
-# logo3dprint
+# intellistream-svgto3dprint
 
 Turn an SVG logo into a multi-colour 3D-printable model. Written in C.
 
@@ -36,12 +36,12 @@ Turn an SVG logo into a multi-colour 3D-printable model. Written in C.
 The GUI is built on SDL3 + OpenGL 3.2 and the single-header Nuklear toolkit, so
 it runs on Linux, Windows and macOS.
 
-![logo3dprint GUI showing a multi-colour logo model](docs/screenshot.png)
+![intellistream-svgto3dprint GUI showing a multi-colour logo model](docs/screenshot.png)
 
 The same logo at 1000 mm width, split into 14 letter-sized pieces that each
 get their own base plate and export file:
 
-![logo3dprint pieces view with the logo split into 14 pieces](docs/screenshot-pieces.png)
+![intellistream-svgto3dprint pieces view with the logo split into 14 pieces](docs/screenshot-pieces.png)
 
 ## Building
 
@@ -72,12 +72,12 @@ Then:
 
     cmake -B build -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/logo3dprint examples/simple.svg
+    ./build/intellistream-svgto3dprint examples/simple.svg
 
 With SDL3 installed system-wide you can also use the plain Makefile:
 
     make -j
-    ./logo3dprint examples/simple.svg
+    ./intellistream-svgto3dprint examples/simple.svg
 
 ### macOS
 
@@ -103,7 +103,7 @@ triangle counts; see `tests/compare_info.py`.
 
 ## Using the GUI
 
-    logo3dprint [logo.svg]
+    intellistream-svgto3dprint [logo.svg]
 
 * **File**: open an SVG (or drop one onto the window), export STL / 3MF.
   With several pieces the default is all pieces in one file: the 3MF holds
@@ -151,7 +151,7 @@ triangle counts; see `tests/compare_info.py`.
   base plate of at least 3 mm (the thickness is raised when you switch them
   on) and are placed clear of the tabs, of the corners where seams meet, and
   of each other; a seam too short for both tabs and a key keeps the tabs.
-  `logo3dprint --export-test fit.3mf --joints keys` writes two small plates
+  `intellistream-svgto3dprint --export-test fit.3mf --joints keys` writes two small plates
   with the current joint and a key, to dial in the clearance on your printer
   with a short print before committing to the real pieces.
 * **Base plate**: thickness, margin, corner radius, colour (own colour or the
@@ -193,19 +193,19 @@ overlap in the print.
 
 ## Command line
 
-    logo3dprint --info logo.svg
-    logo3dprint --export logo.3mf --width 150 --base 2 --margin 3 logo.svg
-    logo3dprint --export logo.stl --per-color --stagger 0.6,0.2 --no-base logo.svg
-    logo3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg   # big_chunk01.3mf ...
-    logo3dprint --export big.3mf --width 2000 --split objects --fit-plate logo.svg      # resize so nothing is shrunk
-    logo3dprint --export big.3mf --width 2000 --split objects --single-file logo.svg    # all pieces in one file
-    logo3dprint --export big.3mf --width 2000 --split objects --per-plate --spacing 5 logo.svg   # big_plate01.3mf ... pieces arranged
-    logo3dprint --export logo.3mf --no-layered --stagger 0.6,0.2 logo.svg              # colours side by side, staggered heights
-    logo3dprint --export big.3mf --width 2000 --split objects --joints keys logo.svg    # pieces lock with sliding dovetail keys: big_chunk01.3mf ... big_keys.3mf
-    logo3dprint --export big.3mf --width 2000 --split objects --joints keys --single-file logo.svg   # pieces and keys as objects in one 3MF, Arrange in the slicer
-    logo3dprint --export-test fit.3mf --joints keys --joint-clearance 0.1               # two test plates and a key to check the fit
+    intellistream-svgto3dprint --info logo.svg
+    intellistream-svgto3dprint --export logo.3mf --width 150 --base 2 --margin 3 logo.svg
+    intellistream-svgto3dprint --export logo.stl --per-color --stagger 0.6,0.2 --no-base logo.svg
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg   # big_chunk01.3mf ...
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --fit-plate logo.svg      # resize so nothing is shrunk
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --single-file logo.svg    # all pieces in one file
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --per-plate --spacing 5 logo.svg   # big_plate01.3mf ... pieces arranged
+    intellistream-svgto3dprint --export logo.3mf --no-layered --stagger 0.6,0.2 logo.svg              # colours side by side, staggered heights
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --joints keys logo.svg    # pieces lock with sliding dovetail keys: big_chunk01.3mf ... big_keys.3mf
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --joints keys --single-file logo.svg   # pieces and keys as objects in one 3MF, Arrange in the slicer
+    intellistream-svgto3dprint --export-test fit.3mf --joints keys --joint-clearance 0.1               # two test plates and a key to check the fit
 
-`logo3dprint --help` lists every option (sizes, per-slot heights, colour merge
+`intellistream-svgto3dprint --help` lists every option (sizes, per-slot heights, colour merge
 threshold, material limit, base plate colour, mirroring).
 
 ## Slicer notes
@@ -259,7 +259,7 @@ threshold, material limit, base plate colour, mirroring).
 
 ## Windows and macOS builds
 
-The window icon is compiled in from `assets/logo3dprint.ico` (regenerate
+The window icon is compiled in from `assets/intellistream-svgto3dprint.ico` (regenerate
 `src/icon_data.h` with `tools/mkicon.py` after changing it); on Windows the
 same file becomes the executable's icon.
 
@@ -282,9 +282,9 @@ SDL3 for Windows:
 
     cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
     cmake --build build-win -j
-    file build-win/logo3dprint.exe   # PE32+ executable (console) x86-64, for MS Windows
+    file build-win/intellistream-svgto3dprint.exe   # PE32+ executable (console) x86-64, for MS Windows
 
-`build-win/logo3dprint.exe` runs under Wine or on real Windows; the tests
+`build-win/intellistream-svgto3dprint.exe` runs under Wine or on real Windows; the tests
 (`tests/run_tests.sh`) need a Windows host or Wine to run, since ctest
 invokes the freshly built executable directly.
 
@@ -327,7 +327,7 @@ Three layers:
 The recordings pin the current geometry down. After a deliberate change in
 what the program produces, re-record them and review the diff:
 
-    UPDATE=1 sh tests/run_tests.sh ./logo3dprint
+    UPDATE=1 sh tests/run_tests.sh ./intellistream-svgto3dprint
 
 ## Licence
 

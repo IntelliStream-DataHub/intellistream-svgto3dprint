@@ -130,7 +130,7 @@ static void load_file(gui_t *g, const char *path)
         model_changed(g);
         camera_fit(&g->cam, &g->app->model);
         snprintf(g->path_buf, sizeof(g->path_buf), "%s", path);
-        snprintf(title, sizeof(title), "logo3dprint - %s", path);
+        snprintf(title, sizeof(title), "intellistream-svgto3dprint - %s", path);
         SDL_SetWindowTitle(g->win, title);
         if (d->n_text_skipped) set_status(g, "Loaded. %d <text> element(s) skipped: no usable font (choose one under File).", d->n_text_skipped);
         else if (g->app->model.colors_before_merge > g->app->model.nslots)
@@ -1618,7 +1618,7 @@ int gui_main(app_state *a)
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
     {
         int ww = a->win_w > 0 ? a->win_w : 1280, wh = a->win_h > 0 ? a->win_h : 800;
-        g.win = SDL_CreateWindow("logo3dprint", ww, wh, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        g.win = SDL_CreateWindow("intellistream-svgto3dprint", ww, wh, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     }
     if (g.win) g.gl = SDL_GL_CreateContext(g.win);
     if (!g.win || !g.gl) {
@@ -1626,7 +1626,7 @@ int gui_main(app_state *a)
         if (g.win) SDL_DestroyWindow(g.win);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-        g.win = SDL_CreateWindow("logo3dprint", a->win_w > 0 ? a->win_w : 1280, a->win_h > 0 ? a->win_h : 800,
+        g.win = SDL_CreateWindow("intellistream-svgto3dprint", a->win_w > 0 ? a->win_w : 1280, a->win_h > 0 ? a->win_h : 800,
                                  SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
         g.gl = g.win ? SDL_GL_CreateContext(g.win) : NULL;
         if (!g.win || !g.gl) {
@@ -1685,7 +1685,7 @@ int gui_main(app_state *a)
             g.tab = 1;
             g.last_nchunks = a->model.nchunks;
         }
-        snprintf(title, sizeof(title), "logo3dprint - %s", a->svg_path);
+        snprintf(title, sizeof(title), "intellistream-svgto3dprint - %s", a->svg_path);
         SDL_SetWindowTitle(g.win, title);
     } else if (a->last_error[0]) {
         set_status(&g, "Error: %s", a->last_error);

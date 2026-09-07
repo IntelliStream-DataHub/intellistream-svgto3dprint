@@ -1,4 +1,4 @@
-# CMake toolchain file for cross-compiling logo3dprint for Windows x86_64
+# CMake toolchain file for cross-compiling intellistream-svgto3dprint for Windows x86_64
 # from Linux with mingw-w64.
 #   cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build-win -j

@@ -8,20 +8,20 @@
 # counts, pieces) are compared with the recordings in tests/expected/, so
 # an unintended change in the geometry shows up as a diff.
 #
-#   sh tests/run_tests.sh ./logo3dprint            run everything
-#   UPDATE=1 sh tests/run_tests.sh ./logo3dprint   re-record tests/expected/
+#   sh tests/run_tests.sh ./intellistream-svgto3dprint            run everything
+#   UPDATE=1 sh tests/run_tests.sh ./intellistream-svgto3dprint   re-record tests/expected/
 #                                                  after a deliberate change
 #
 # The mesh checks and the tolerant comparison need python3; without it only
 # the conversions themselves and exact comparisons run.
 set -u
-BIN=${1:-./logo3dprint}
+BIN=${1:-./intellistream-svgto3dprint}
 case "$BIN" in /*) ;; *) BIN=$(pwd)/$BIN ;; esac
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 EX=$ROOT/examples
 EXPECTED=$HERE/expected
-OUT=${TMPDIR:-/tmp}/logo3dprint-tests
+OUT=${TMPDIR:-/tmp}/intellistream-svgto3dprint-tests
 rm -rf "$OUT"
 mkdir -p "$OUT" "$EXPECTED"
 PY=
