@@ -52,6 +52,25 @@ typedef struct {
 
 typedef enum { CHUNK_OFF = 0, CHUNK_OBJECTS = 1, CHUNK_TILES = 2 } chunk_mode_t;
 
+/* How neighbouring base plates are joined (model_params.chunk_joints). */
+typedef enum {
+    JOINTS_NONE = 0,        /* separate rounded plates */
+    JOINTS_JIGSAW = 1,      /* one strip per row, jigsaw dovetail tabs (drop in from above) */
+    JOINTS_KEYS = 2         /* jigsaw tabs plus sliding dovetail keys on the underside that lock the pieces together */
+} joint_style_t;
+
+/* Base plates thinner than this get no keys: the slot needs a ceiling and ledges. */
+#define KEY_MIN_PLATE 3.0
+
+/* One sliding dovetail key: a separate print that slides in a slot on the
+ * underside across a seam.  Parked inside piece `a` (the socket side), pushed
+ * half way into piece `b` after assembly. */
+typedef struct {
+    double len;             /* mm along the slot */
+    int a, b;               /* chunk indices */
+    int side;               /* seam side of `a`: 1 right, 3 top */
+} joint_key_t;
+
 typedef struct {
     /* sizing: overall model footprint, base plate margin included */
     double width_mm;        /* target model width */
@@ -84,8 +103,8 @@ typedef struct {
     double chunk_spacing;       /* preview spacing between chunks (mm) */
     int chunk_view;             /* preview: 0 = all chunks, n = chunk n only, centred */
     double plate_padding;       /* mm kept free around a one-piece model when fitting it to the plate */
-    int chunk_joints;           /* base plates form a continuous strip per row with dovetail joints */
-    double joint_clearance;     /* mm of play between tab and socket */
+    int chunk_joints;           /* joint_style_t: how neighbouring base plates are joined */
+    double joint_clearance;     /* mm of play between tab and socket, and around a key */
     /* layered colours: one colour forms the whole logo body, the others are
      * thin layers on top of it (raised) or inlaid flush with its top */
     int layered;
@@ -117,8 +136,13 @@ typedef struct {
     int chunk_mode_used;
     double chunk_join_used, chunk_max_w_used, chunk_max_d_used;
     int chunk_oversize_used;
+    int chunk_joints_used;
     double chunk_fit_scale;     /* largest uniform scale (relative to now) at which every piece fits uncut */
     double chunk_uniform_scale; /* scale applied to every piece (policy 1), 1 when nothing was shrunk */
+    /* sliding dovetail keys (JOINTS_KEYS), one per seam end that has room */
+    int nkeys;
+    joint_key_t *keys;
+    int keys_too_thin;          /* keys wanted but the base plate is thinner than KEY_MIN_PLATE */
     /* arrangement of the pieces on printer plates (model_pack_plates) */
     int nplates;
     double plate_w, plate_d;    /* the printer plate: piece limit plus 2 mm clearance each side */
@@ -172,6 +196,17 @@ void mesh_xform_copy(mesh_t *dst, const mesh_t *src, double deg, double sxy);
 void region_xform_copy(region_t *dst, const region_t *src, double deg, double sxy);
 /* Largest uniform scale of the geometry (margins stay) at which w x d fits W x D. */
 double model_max_fit_scale(double w, double d, double margin, double W, double D);
+
+/* Size of every key (all share one cross-section): width, height as printed
+ * (wide face down), and the ledge width the slot's flanks keep. */
+void model_key_size(const model_params *p, double *w, double *h);
+/* Mesh of key k, centred at the origin, long axis along X, printed wide face
+ * down (z = 0).  Returns 0 when there is no such key. */
+int model_key_mesh(const model_t *m, const model_params *p, int k, mesh_t *out);
+/* Joint test print: two small plates joined by the current joint style, and
+ * the key when keys are on.  Meshes are centred on their own footprints;
+ * returns the number of meshes (2 or 3, 0 when there is nothing to test). */
+int model_build_coupon(const model_params *p, mesh_t *left, mesh_t *right, mesh_t *key, double *gap);
 
 void mesh_init(mesh_t *m);
 void mesh_free(mesh_t *m);

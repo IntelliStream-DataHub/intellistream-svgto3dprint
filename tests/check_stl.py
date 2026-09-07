@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate binary STL files written by logo3dprint: the record count matches
+"""Validate binary STL files written by intellistream-svgto3dprint: the record count matches
 the file size and every mesh is closed (each directed edge matched by the
 same number of reversed edges). Exit status is non-zero when a file fails."""
 import sys, struct

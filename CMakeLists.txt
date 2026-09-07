@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(logo3dprint C)
+project(intellistream-svgto3dprint C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -147,33 +147,33 @@ set(CORE_SRC
 set(GUI_SRC
   src/main.c src/gui.c src/render.c src/glapi.c src/nk_sdl_gl3.c src/nk_impl.c)
 
-add_executable(logo3dprint ${CORE_SRC} ${GUI_SRC})
+add_executable(intellistream-svgto3dprint ${CORE_SRC} ${GUI_SRC})
 if(WIN32)
   # the .exe icon; the window icon is compiled in from src/icon_data.h
   enable_language(RC)
-  target_sources(logo3dprint PRIVATE assets/logo3dprint.rc)
+  target_sources(intellistream-svgto3dprint PRIVATE assets/intellistream-svgto3dprint.rc)
 endif()
-target_include_directories(logo3dprint PRIVATE
+target_include_directories(intellistream-svgto3dprint PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nuklear
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
-target_link_libraries(logo3dprint PRIVATE tess2 SDL3::SDL3)
-target_compile_options(logo3dprint PRIVATE ${LOGO3D_FP_FLAGS})
+target_link_libraries(intellistream-svgto3dprint PRIVATE tess2 SDL3::SDL3)
+target_compile_options(intellistream-svgto3dprint PRIVATE ${LOGO3D_FP_FLAGS})
 if(MSVC)
-  target_compile_definitions(logo3dprint PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_compile_definitions(intellistream-svgto3dprint PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
-  target_compile_options(logo3dprint PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  target_compile_options(intellistream-svgto3dprint PRIVATE -Wall -Wextra -Wno-unused-parameter)
   set_source_files_properties(src/nk_impl.c PROPERTIES COMPILE_OPTIONS "-w")
   set_source_files_properties(src/textfont.c PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
-  target_compile_definitions(logo3dprint PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+  target_compile_definitions(intellistream-svgto3dprint PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
 endif()
 if(UNIX AND NOT APPLE)
-  target_link_libraries(logo3dprint PRIVATE m ${CMAKE_DL_LIBS})
+  target_link_libraries(intellistream-svgto3dprint PRIVATE m ${CMAKE_DL_LIBS})
 elseif(APPLE)
-  target_link_libraries(logo3dprint PRIVATE m)
+  target_link_libraries(intellistream-svgto3dprint PRIVATE m)
 endif()
 
-install(TARGETS logo3dprint RUNTIME DESTINATION bin)
+install(TARGETS intellistream-svgto3dprint RUNTIME DESTINATION bin)
 
 # --- tests ----------------------------------------------------------------
 add_executable(test_region tests/test_region.c src/region.c)
@@ -197,5 +197,5 @@ enable_testing()
 add_test(NAME region_unit COMMAND test_region)
 add_test(NAME ui_unit COMMAND test_ui)
 add_test(NAME headless_exports
-  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh $<TARGET_FILE:logo3dprint>
+  COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh $<TARGET_FILE:intellistream-svgto3dprint>
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

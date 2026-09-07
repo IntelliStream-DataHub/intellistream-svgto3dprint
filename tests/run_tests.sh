@@ -8,20 +8,20 @@
 # counts, pieces) are compared with the recordings in tests/expected/, so
 # an unintended change in the geometry shows up as a diff.
 #
-#   sh tests/run_tests.sh ./logo3dprint            run everything
-#   UPDATE=1 sh tests/run_tests.sh ./logo3dprint   re-record tests/expected/
+#   sh tests/run_tests.sh ./intellistream-svgto3dprint            run everything
+#   UPDATE=1 sh tests/run_tests.sh ./intellistream-svgto3dprint   re-record tests/expected/
 #                                                  after a deliberate change
 #
 # The mesh checks and the tolerant comparison need python3; without it only
 # the conversions themselves and exact comparisons run.
 set -u
-BIN=${1:-./logo3dprint}
+BIN=${1:-./intellistream-svgto3dprint}
 case "$BIN" in /*) ;; *) BIN=$(pwd)/$BIN ;; esac
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 EX=$ROOT/examples
 EXPECTED=$HERE/expected
-OUT=${TMPDIR:-/tmp}/logo3dprint-tests
+OUT=${TMPDIR:-/tmp}/intellistream-svgto3dprint-tests
 rm -rf "$OUT"
 mkdir -p "$OUT" "$EXPECTED"
 PY=
@@ -151,6 +151,27 @@ run many-objects        --split objects "$EX/many_colors.svg"
 run many-objects-tiles  --split objects --plate 60x60 --oversize cut "$EX/many_colors.svg"
 run many-objects-each   --split objects --plate 60x60 --oversize each --join 0 "$EX/many_colors.svg"
 run clip-tiles          --split tiles --plate 80x80 "$EX/clip_pattern.svg"
+# sliding dovetail keys: slots in every plate, the keys in a file of their own
+run arcs-keys           --split objects --join 0 --plate 100x80 --joints keys "$EX/evenodd_arcs.svg"
+check3mf "$OUT/arcs-keys_keys.3mf"
+checkstl "$OUT/arcs-keys_keys.stl"
+[ -e "$OUT/arcs-keys_keys.3mf" ] || fails "no arcs-keys_keys.3mf written"
+# all in one 3MF: the two pieces and their two keys as four objects
+"$BIN" --export "$OUT/arcs-keys-one.3mf" --split objects --join 0 --plate 100x80 --joints keys --single-file "$EX/evenodd_arcs.svg" > /dev/null || fails "--single-file with keys"
+[ -e "$OUT/arcs-keys-one_keys.3mf" ] && fails "the all-in-one 3MF must hold the keys itself"
+res=$(check3mf "$OUT/arcs-keys-one.3mf"); echo "$res"; echo "$res" | grep -q "4 build item" || fails "arcs-keys-one.3mf should hold 4 objects (2 pieces + 2 keys)"
+run simple-tiles-keys   --split tiles --plate 80x80 --width 220 --joints keys "$EX/simple.svg"
+check3mf "$OUT/simple-tiles-keys_keys.3mf"
+run simple-tiles-thin   --split tiles --plate 80x80 --width 220 --joints keys --base 2 "$EX/simple.svg"
+[ -e "$OUT/simple-tiles-thin_keys.3mf" ] && fails "a 2 mm plate must not get keys"
+# the joint test print, with and without keys
+"$BIN" --export-test "$OUT/jointtest.3mf" --joints keys > /dev/null || fails "--export-test 3mf"
+check3mf "$OUT/jointtest.3mf"
+"$BIN" --export-test "$OUT/jointtest.stl" --joints keys --joint-clearance 0.1 > /dev/null || fails "--export-test stl"
+checkstl "$OUT/jointtest.stl"
+"$BIN" --export-test "$OUT/jointtest-jigsaw.stl" > /dev/null || fails "--export-test jigsaw"
+checkstl "$OUT/jointtest-jigsaw.stl"
+"$BIN" --export-test "$OUT/jointtest-none.stl" --joints none > /dev/null 2>&1 && fails "--export-test without joints should fail"
 # every piece in one 3MF (assembled layout)
 "$BIN" --export "$OUT/simple-onefile.3mf" --split tiles --plate 60x60 --single-file "$EX/simple.svg" > /dev/null || fails "--single-file"
 check3mf "$OUT/simple-onefile.3mf"

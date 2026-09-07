@@ -1,4 +1,4 @@
-# logo3dprint
+# intellistream-svgto3dprint
 
 Turn an SVG logo into a multi-colour 3D-printable model. Written in C.
 
@@ -27,17 +27,21 @@ Turn an SVG logo into a multi-colour 3D-printable model. Written in C.
 * **Arranges the pieces on printer plates**: the pieces are packed onto as
   few plates as possible (the *Pieces* tab labels each piece with its plate)
   and exports can write one file per plate.
+* **Pieces that lock together without glue**: neighbouring base plates get
+  jigsaw dovetail tabs, and optionally *sliding dovetail keys*: small printed
+  bars that slide in slots on the underside across every seam and hold the
+  pieces down to each other. Push a key back and the pieces come apart again.
 * Headless command-line mode for scripting.
 
 The GUI is built on SDL3 + OpenGL 3.2 and the single-header Nuklear toolkit, so
 it runs on Linux, Windows and macOS.
 
-![logo3dprint GUI showing a multi-colour logo model](docs/screenshot.png)
+![intellistream-svgto3dprint GUI showing a multi-colour logo model](docs/screenshot.png)
 
 The same logo at 1000 mm width, split into 14 letter-sized pieces that each
 get their own base plate and export file:
 
-![logo3dprint pieces view with the logo split into 14 pieces](docs/screenshot-pieces.png)
+![intellistream-svgto3dprint pieces view with the logo split into 14 pieces](docs/screenshot-pieces.png)
 
 ## Building
 
@@ -68,12 +72,12 @@ Then:
 
     cmake -B build -DCMAKE_BUILD_TYPE=Release
     cmake --build build -j
-    ./build/logo3dprint examples/simple.svg
+    ./build/intellistream-svgto3dprint examples/simple.svg
 
 With SDL3 installed system-wide you can also use the plain Makefile:
 
     make -j
-    ./logo3dprint examples/simple.svg
+    ./intellistream-svgto3dprint examples/simple.svg
 
 ### macOS
 
@@ -99,11 +103,13 @@ triangle counts; see `tests/compare_info.py`.
 
 ## Using the GUI
 
-    logo3dprint [logo.svg]
+    intellistream-svgto3dprint [logo.svg]
 
 * **File**: open an SVG (or drop one onto the window), export STL / 3MF.
-  With several pieces choose one file per piece, one file per printer plate
-  (the pieces arranged on it), or all pieces in one file. Opening a file
+  With several pieces the default is all pieces in one file: the 3MF holds
+  every piece, and every key, as an object of its own, so *Arrange* in the
+  slicer spreads them over its plates. Or choose one file per piece, or one
+  file per printer plate (the pieces arranged on it). Opening a file
   resets all model settings; the plate settings are kept. If no native file
   dialog is available, path fields appear as a fallback.
 * **Size**: model width or height in millimetres, base plate included (the
@@ -118,17 +124,36 @@ triangle counts; see `tests/compare_info.py`.
   (default, keeps the logo's proportions), shrink each piece on its own, cut
   into tiles, or keep and warn. "Resize logo to N mm" sets the model size to
   the largest one at which every piece fits unshrunk. The tab bar above the
-  3D view then offers a *Pieces* grid (one viewport per piece: drag to orbit
-  all, wheel to zoom, double-click to open) and one tab per piece. The pieces
+  3D view then offers a *Pieces* grid (one viewport per piece: left drag to
+  orbit all, right or middle drag to pan all, wheel to zoom, `F` to reset,
+  double-click to open) and one tab per piece. The pieces
   are also arranged on printer plates, in piece order with *Piece spacing*
   between them; every piece's label names its plate. Every piece
   is exported centred, turned and scaled exactly as shown, one file per piece.
   With a base plate, *Connected plates* gives every row of pieces one
   continuous strip of plate: neighbouring plates meet halfway between the
-  pieces with square edges and dovetail tabs/sockets (a few per joint,
+  pieces with square edges and jigsaw dovetail tabs/sockets (a few per joint,
   adjustable clearance), only the two ends of a row keep rounded corners, so
   the pieces plug together into one plaque. Plate-sized tiles get joints on
   all four sides along the cut lines; tile sizes leave room for the tabs.
+  The jigsaw tabs hold the pieces in the plane but nothing stops one piece
+  lifting off its neighbour; *jigsaw + sliding dovetail keys* adds that
+  lock without glue. Every seam gets one or two slots on the underside of the
+  plate, running across the seam, with a dovetail cross-section (4 mm mouth,
+  7 mm under the ceiling) that is printable flat without support. A key is a
+  separate 24 mm bar (shorter on narrow pieces) that parks inside the
+  socket-side piece; after the pieces are dropped together, push each key
+  through its slot from below with a fingernail until it stops half way into
+  the neighbour, and the two pieces are held together in every direction.
+  Push it back and they separate. The keys are exported to a `_keys` file
+  next to the pieces, laid out for printing (wide face down, no support);
+  print them in the same material and with the same clearance. Keys need a
+  base plate of at least 3 mm (the thickness is raised when you switch them
+  on) and are placed clear of the tabs, of the corners where seams meet, and
+  of each other; a seam too short for both tabs and a key keeps the tabs.
+  `intellistream-svgto3dprint --export-test fit.3mf --joints keys` writes two small plates
+  with the current joint and a key, to dial in the clearance on your printer
+  with a short print before committing to the real pieces.
 * **Base plate**: thickness, margin, corner radius, colour (own colour or the
   same material as one of the logo colours).
 * **Colours**: one row per colour slot with a colour swatch (click to change the
@@ -152,11 +177,13 @@ triangle counts; see `tests/compare_info.py`.
   the model does not fit at any angle. Switching the split mode back to one
   piece resizes the model to the plate minus that padding; the Size section
   has a "Fit to plate" button for the same.
-* **View**: camera presets, perspective/orthographic, bounding box,
+* **View**: camera presets (*Bottom* shows the underside with the key
+  slots), perspective/orthographic, bounding box,
   dimensions, per-colour heights, outlines, axis triad and the measure tool (click two points on the model).
 
 Mouse: left drag orbits, right/middle drag pans, wheel zooms.
-Keys: `F` fit, `0` iso, `1` front, `3` right, `7` top, `P` perspective toggle,
+Keys: `F` fit, `0` iso, `1` front, `3` right, `7` top, `9` bottom (shows the
+key slots), `P` perspective toggle,
 `M` measure tool, `Esc` clear, `Ctrl+O` open, `Ctrl+E` export 3MF.
 
 Colours are quantised so that the whole model uses at most 8 materials
@@ -166,16 +193,19 @@ overlap in the print.
 
 ## Command line
 
-    logo3dprint --info logo.svg
-    logo3dprint --export logo.3mf --width 150 --base 2 --margin 3 logo.svg
-    logo3dprint --export logo.stl --per-color --stagger 0.6,0.2 --no-base logo.svg
-    logo3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg   # big_chunk01.3mf ...
-    logo3dprint --export big.3mf --width 2000 --split objects --fit-plate logo.svg      # resize so nothing is shrunk
-    logo3dprint --export big.3mf --width 2000 --split objects --single-file logo.svg    # all pieces in one file
-    logo3dprint --export big.3mf --width 2000 --split objects --per-plate --spacing 5 logo.svg   # big_plate01.3mf ... pieces arranged
-    logo3dprint --export logo.3mf --no-layered --stagger 0.6,0.2 logo.svg              # colours side by side, staggered heights
+    intellistream-svgto3dprint --info logo.svg
+    intellistream-svgto3dprint --export logo.3mf --width 150 --base 2 --margin 3 logo.svg
+    intellistream-svgto3dprint --export logo.stl --per-color --stagger 0.6,0.2 --no-base logo.svg
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg   # big_chunk01.3mf ...
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --fit-plate logo.svg      # resize so nothing is shrunk
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --single-file logo.svg    # all pieces in one file
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --per-plate --spacing 5 logo.svg   # big_plate01.3mf ... pieces arranged
+    intellistream-svgto3dprint --export logo.3mf --no-layered --stagger 0.6,0.2 logo.svg              # colours side by side, staggered heights
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --joints keys logo.svg    # pieces lock with sliding dovetail keys: big_chunk01.3mf ... big_keys.3mf
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --joints keys --single-file logo.svg   # pieces and keys as objects in one 3MF, Arrange in the slicer
+    intellistream-svgto3dprint --export-test fit.3mf --joints keys --joint-clearance 0.1               # two test plates and a key to check the fit
 
-`logo3dprint --help` lists every option (sizes, per-slot heights, colour merge
+`intellistream-svgto3dprint --help` lists every option (sizes, per-slot heights, colour merge
 threshold, material limit, base plate colour, mirroring).
 
 ## Slicer notes
@@ -201,6 +231,15 @@ threshold, material limit, base plate colour, mirroring).
 * **One file per printer plate** (`--per-plate`) writes the pieces of each
   plate arranged on it, origin at the plate's front-left corner, for any
   slicer; import one file per plate.
+* **Sliding dovetail keys** are objects in the all-in-one 3MF (in a row in
+  front of the pieces, base plate colour) and come in their own `_keys` file
+  in the per-piece and per-plate modes; print them as they are, wide face
+  down. The fit depends on the printer more than on the material:
+  shrinkage scales tab and socket alike and is compensated per filament in
+  the slicer anyway, while first-layer squish (elephant's foot) and flow do
+  change the fit. Print the `--export-test` plates first and adjust the joint
+  clearance (0.15 mm default; 0.1 for a snug key, 0.2-0.25 for materials
+  that warp such as ABS/ASA).
 * Other slicers get a standard 3MF with `basematerials` colours; assign the
   filaments per object manually if needed.
 * STL exports one merged file by default (every colour fused into a single
@@ -220,7 +259,7 @@ threshold, material limit, base plate colour, mirroring).
 
 ## Windows and macOS builds
 
-The window icon is compiled in from `assets/logo3dprint.ico` (regenerate
+The window icon is compiled in from `assets/intellistream-svgto3dprint.ico` (regenerate
 `src/icon_data.h` with `tools/mkicon.py` after changing it); on Windows the
 same file becomes the executable's icon.
 
@@ -243,9 +282,9 @@ SDL3 for Windows:
 
     cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
     cmake --build build-win -j
-    file build-win/logo3dprint.exe   # PE32+ executable (console) x86-64, for MS Windows
+    file build-win/intellistream-svgto3dprint.exe   # PE32+ executable (console) x86-64, for MS Windows
 
-`build-win/logo3dprint.exe` runs under Wine or on real Windows; the tests
+`build-win/intellistream-svgto3dprint.exe` runs under Wine or on real Windows; the tests
 (`tests/run_tests.sh`) need a Windows host or Wine to run, since ctest
 invokes the freshly built executable directly.
 
@@ -288,7 +327,7 @@ Three layers:
 The recordings pin the current geometry down. After a deliberate change in
 what the program produces, re-record them and review the diff:
 
-    UPDATE=1 sh tests/run_tests.sh ./logo3dprint
+    UPDATE=1 sh tests/run_tests.sh ./intellistream-svgto3dprint
 
 ## Licence
 

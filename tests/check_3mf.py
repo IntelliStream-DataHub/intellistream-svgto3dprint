@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a 3MF written by logo3dprint: zip layout, XML, per-part triangle
+"""Validate a 3MF written by intellistream-svgto3dprint: zip layout, XML, per-part triangle
 ranges from Metadata/Slic3r_PE_model.config, material references, and that
 every part mesh is closed (each edge used exactly twice, opposite directions).
 

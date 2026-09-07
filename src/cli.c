@@ -9,7 +9,7 @@
 static void usage(FILE *f)
 {
     fprintf(f,
-        "usage: logo3dprint [options] [logo.svg]\n"
+        "usage: intellistream-svgto3dprint [options] [logo.svg]\n"
         "\n"
         "Without --export or --info the GUI starts (with the SVG loaded when given).\n"
         "\n"
@@ -49,9 +49,15 @@ static void usage(FILE *f)
         "  --fit-plate          resize the logo to fit the plate: as one piece, plate minus\n"
         "                       padding; when splitting, the largest size with every piece uncut\n"
         "  --padding MM         padding around a one-piece model for --fit-plate (default 40)\n"
-        "  --no-joints          pieces get separate rounded plates instead of a connected strip\n"
-        "                       with dovetail joints\n"
-        "  --joint-clearance MM play between dovetail tab and socket (default 0.15)\n"
+        "  --joints STYLE       how the base plates of neighbouring pieces meet: jigsaw (default;\n"
+        "                       one strip per row with jigsaw dovetail tabs), keys (jigsaw tabs plus\n"
+        "                       sliding dovetail keys on the underside that lock the pieces\n"
+        "                       together without glue and slide back out; needs a plate of at\n"
+        "                       least 3 mm and writes the keys to FILE_keys), none (separate plates)\n"
+        "  --no-joints          same as --joints none\n"
+        "  --joint-clearance MM play between tab and socket, and around a key (default 0.15)\n"
+        "  --export-test FILE   write a joint test print (.stl or .3mf): two small plates with the\n"
+        "                       current joint and key, to check the clearance on your printer\n"
         "  --single-file        export all pieces into one file instead of one file per piece\n"
         "  --per-plate          one file per printer plate, with the pieces arranged on it\n"
         "                       (--info shows the arrangement; spacing = --spacing)\n"
@@ -59,7 +65,7 @@ static void usage(FILE *f)
 
         "  --font FILE          TrueType/OpenType font for <text> (default: matching system font)\n"
         "  --screenshot FILE    GUI: render one frame to FILE (binary PPM) and exit\n"
-        "  --view iso|top|front|right  GUI: initial camera\n"
+        "  --view iso|top|bottom|front|right  GUI: initial camera\n"
         "  --window WxH         GUI: initial window size\n"
         "  --piece N            GUI: start on the tab of piece N\n"
         "  --tab model|pieces   GUI: initial tab (default: pieces grid when split)\n"
@@ -92,6 +98,20 @@ static void print_info(const app_state *a)
     printf("triangles: %d\n", m->total_tris);
     if (p->base_enabled && p->base_thickness > 0)
         printf("base: #%06X  %.1f mm thick  %.0f mm^3  %d tris\n", model_base_rgb(m, p), p->base_thickness, m->base_volume, m->base_mesh.nt);
+    if (m->nchunks > 1 && p->chunk_joints == JOINTS_KEYS && p->base_enabled && p->base_thickness > 0) {
+        if (m->keys_too_thin) printf("keys: none (the base plate is thinner than %.0f mm)\n", KEY_MIN_PLATE);
+        else if (m->nkeys == 0) printf("keys: none (no seam has room for one)\n");
+        else {
+            double kw, kh, lmin = 1e300, lmax = 0;
+            for (i = 0; i < m->nkeys; i++) {
+                if (m->keys[i].len < lmin) lmin = m->keys[i].len;
+                if (m->keys[i].len > lmax) lmax = m->keys[i].len;
+            }
+            model_key_size(p, &kw, &kh);
+            if (lmax - lmin < 0.05) printf("keys: %d sliding dovetail keys, %.1f x %.1f x %.2f mm (exported to FILE_keys)\n", m->nkeys, lmax, kw, kh);
+            else printf("keys: %d sliding dovetail keys, %.1f-%.1f x %.1f x %.2f mm (exported to FILE_keys)\n", m->nkeys, lmin, lmax, kw, kh);
+        }
+    }
     if (m->nchunks > 1) {
         printf("pieces: %d (plate %.0f x %.0f mm)", m->nchunks, p->chunk_max_w, p->chunk_max_d);
         if (p->chunk_mode == CHUNK_OBJECTS && m->chunk_fit_scale > 0) printf("  every piece fits uncut up to %.0f%% of this size", m->chunk_fit_scale * 100);
@@ -136,6 +156,8 @@ int cli_main(int argc, char **argv, app_state *a)
     int base_slot = -1;
     int single_file = 0, per_plate = 0;
     int fit_plate = 0;
+    const char *test_path = NULL;
+    int base_given = 0;
 
     for (i = 1; i < argc; i++) {
         const char *s = argv[i];
@@ -164,7 +186,7 @@ int cli_main(int argc, char **argv, app_state *a)
         else if (!strcmp(s, "--body")) { NEED_ARG(); a->params.body_slot = atoi(next) - 1; }
         else if (!strcmp(s, "--body-height")) { NEED_ARG(); a->params.body_height = atof(next); }
         else if (!strcmp(s, "--no-base")) a->params.base_enabled = 0;
-        else if (!strcmp(s, "--base")) { NEED_ARG(); a->params.base_thickness = atof(next); a->params.base_enabled = a->params.base_thickness > 0; }
+        else if (!strcmp(s, "--base")) { NEED_ARG(); a->params.base_thickness = atof(next); a->params.base_enabled = a->params.base_thickness > 0; base_given = 1; }
         else if (!strcmp(s, "--margin")) { NEED_ARG(); a->params.base_margin = atof(next); }
         else if (!strcmp(s, "--radius")) { NEED_ARG(); a->params.base_radius = atof(next); }
         else if (!strcmp(s, "--base-color")) { NEED_ARG(); if (!parse_hex(next, &a->params.base_rgb)) { fprintf(stderr, "bad colour '%s'\n", next); return 2; } a->params.base_color_slot = -1; }
@@ -192,6 +214,7 @@ int cli_main(int argc, char **argv, app_state *a)
             if (!strcmp(next, "top")) a->view_preset = 1;
             else if (!strcmp(next, "front")) a->view_preset = 2;
             else if (!strcmp(next, "right")) a->view_preset = 3;
+            else if (!strcmp(next, "bottom")) a->view_preset = 6;
             else a->view_preset = 0;
         }
         else if (!strcmp(s, "--split")) {
@@ -222,8 +245,16 @@ int cli_main(int argc, char **argv, app_state *a)
         else if (!strcmp(s, "--single-file")) single_file = 1;
         else if (!strcmp(s, "--per-plate")) per_plate = 1;
         else if (!strcmp(s, "--spacing")) { NEED_ARG(); a->params.chunk_spacing = atof(next); }
-        else if (!strcmp(s, "--no-joints")) a->params.chunk_joints = 0;
+        else if (!strcmp(s, "--no-joints")) a->params.chunk_joints = JOINTS_NONE;
+        else if (!strcmp(s, "--joints")) {
+            NEED_ARG();
+            if (!strcmp(next, "none")) a->params.chunk_joints = JOINTS_NONE;
+            else if (!strcmp(next, "jigsaw")) a->params.chunk_joints = JOINTS_JIGSAW;
+            else if (!strcmp(next, "keys")) a->params.chunk_joints = JOINTS_KEYS;
+            else { fprintf(stderr, "bad --joints value '%s' (none, jigsaw, keys)\n", next); return 2; }
+        }
         else if (!strcmp(s, "--joint-clearance")) { NEED_ARG(); a->params.joint_clearance = atof(next); }
+        else if (!strcmp(s, "--export-test")) { NEED_ARG(); test_path = next; }
 
         else if (s[0] == '-' && s[1]) { fprintf(stderr, "unknown option '%s'\n", s); usage(stderr); return 2; }
         else input = s;
@@ -233,6 +264,21 @@ int cli_main(int argc, char **argv, app_state *a)
     for (i = 0; i < nslot_h; i++) a->params.slot_height[slot_h_n[i]] = slot_h_v[i];
     for (i = 0; i < nhide; i++) if (hide[i] >= 0 && hide[i] < MAX_SLOTS) a->params.slot_visible[hide[i]] = 0;
     if (base_slot >= 0 && base_slot < MAX_SLOTS) a->params.base_color_slot = base_slot;
+    /* keys need room for their slot: a 3 mm plate unless one was asked for */
+    if (a->params.chunk_joints == JOINTS_KEYS && a->params.base_enabled && a->params.base_thickness < KEY_MIN_PLATE) {
+        if (base_given) fprintf(stderr, "note: sliding dovetail keys need a base plate of at least %.0f mm; none will be made with --base %g\n", KEY_MIN_PLATE, a->params.base_thickness);
+        else a->params.base_thickness = KEY_MIN_PLATE;
+    }
+
+    if (test_path) {
+        char err[256];
+        size_t len = strlen(test_path);
+        int kind = (len > 4 && (!strcmp(test_path + len - 4, ".3mf") || !strcmp(test_path + len - 4, ".3MF"))) ? 2 : 0;
+        if (input && !app_load_svg(a, input)) { fprintf(stderr, "error: %s\n", a->last_error); return 1; }
+        if (!export_coupon(&a->model, &a->params, kind, test_path, err, sizeof(err))) { fprintf(stderr, "export failed: %s\n", err); return 1; }
+        printf("wrote %s\n", test_path);
+        if (!export_path && !info) return 0;
+    }
 
     if (!export_path && !info) {
         if (input) {
