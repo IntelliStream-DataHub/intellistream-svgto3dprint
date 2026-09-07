@@ -1316,9 +1316,16 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
     case SDL_EVENT_MOUSE_WHEEL: {
         float mx, my;
         SDL_GetMouseState(&mx, &my);
-        if (in_viewport(g, mx, my - g->tab_h, vw, vh)) {
-            if (g->tab == 1) { g->grid_zoom *= powf(1.15f, e->wheel.y); if (g->grid_zoom < 0.2f) g->grid_zoom = 0.2f; if (g->grid_zoom > 8) g->grid_zoom = 8; }
-            else camera_zoom(&g->cam, e->wheel.y);
+        if (mx < vw) {
+            /* Nuklear scrolls the active window (the panel) on every wheel
+             * event, wherever the mouse is.  Wheel input left of the panel
+             * belongs to the view, so take it back out of Nuklear's input. */
+            g->ctx->input.mouse.scroll_delta.x -= e->wheel.x;
+            g->ctx->input.mouse.scroll_delta.y -= e->wheel.y;
+            if (in_viewport(g, mx, my - g->tab_h, vw, vh)) {
+                if (g->tab == 1) { g->grid_zoom *= powf(1.15f, e->wheel.y); if (g->grid_zoom < 0.2f) g->grid_zoom = 0.2f; if (g->grid_zoom > 8) g->grid_zoom = 8; }
+                else camera_zoom(&g->cam, e->wheel.y);
+            }
         }
         break;
     }
@@ -1362,7 +1369,14 @@ static void load_fonts(gui_t *g)
         NULL
     };
     float size = floorf(15.0f * g->ui + 0.5f);
-    struct nk_font_config cfg = nk_font_config(size);
+    /* Nuklear lays out and draws in window units, which on a Retina Mac cover
+     * g->px framebuffer pixels each.  Everything but the text is solid-coloured
+     * triangles and magnifies losslessly; glyphs come from a texture, so bake
+     * the atlas at the size the pixels actually are and let nuklear scale the
+     * quads back down (it divides by handle.height / info.height).  The atlas
+     * then lands on the framebuffer one texel per pixel. */
+    float baked = floorf(size * g->px + 0.5f);
+    struct nk_font_config cfg = nk_font_config(baked);
     int i;
     /* glyphs rendered 1:1 on integer pixels stay sharp */
     cfg.oversample_h = 1;
@@ -1371,17 +1385,22 @@ static void load_fonts(gui_t *g)
     nk_sdl_font_stash_begin(&atlas);
     for (i = 0; candidates[i] && !font; i++) {
         SDL_PathInfo info;
-        if (SDL_GetPathInfo(candidates[i], &info)) font = nk_font_atlas_add_from_file(atlas, candidates[i], size, &cfg);
+        if (SDL_GetPathInfo(candidates[i], &info)) font = nk_font_atlas_add_from_file(atlas, candidates[i], baked, &cfg);
     }
     if (!font) {
-        cfg = nk_font_config(floorf(13.0f * g->ui + 0.5f));
+        size = floorf(13.0f * g->ui + 0.5f);
+        baked = floorf(size * g->px + 0.5f);
+        cfg = nk_font_config(baked);
         cfg.oversample_h = 1;
         cfg.oversample_v = 1;
         cfg.pixel_snap = nk_true;
-        font = nk_font_atlas_add_default(atlas, cfg.size, &cfg);
+        font = nk_font_atlas_add_default(atlas, baked, &cfg);
     }
     nk_sdl_font_stash_end();
-    if (font) nk_style_set_font(g->ctx, &font->handle);
+    if (font) {
+        font->handle.height = size;   /* draw the oversized atlas at its window-unit size */
+        nk_style_set_font(g->ctx, &font->handle);
+    }
     /* clearer check boxes: dark box, bright mark when checked */
     {
         struct nk_style *s = &g->ctx->style;

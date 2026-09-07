@@ -80,7 +80,11 @@ info() {
     # file; keep the basenames only
     sed 's|^file: .*/|file: |; s|rendered with .*/|rendered with |' "$OUT/$name.raw" > "$OUT/$name.info"
     if [ -n "${UPDATE:-}" ]; then
-        cp "$OUT/$name.info" "$EXPECTED/$name.info"
+        if [ -n "$PY" ]; then
+            "$PY" "$HERE/compare_info.py" --normalise "$OUT/$name.info" "$EXPECTED/$name.info"
+        else
+            cp "$OUT/$name.info" "$EXPECTED/$name.info"
+        fi
         echo "recorded tests/expected/$name.info"
         return
     fi

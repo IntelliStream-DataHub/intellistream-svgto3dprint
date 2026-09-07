@@ -122,6 +122,7 @@ typedef void (GLAPIENTRY *PFN_glUseProgram)(GLuint program);
 typedef void (GLAPIENTRY *PFN_glDeleteProgram)(GLuint program);
 typedef GLint (GLAPIENTRY *PFN_glGetUniformLocation)(GLuint program, const GLchar *name);
 typedef GLint (GLAPIENTRY *PFN_glGetAttribLocation)(GLuint program, const GLchar *name);
+typedef void (GLAPIENTRY *PFN_glBindAttribLocation)(GLuint program, GLuint index, const GLchar *name);
 typedef void (GLAPIENTRY *PFN_glUniform1i)(GLint location, GLint v0);
 typedef void (GLAPIENTRY *PFN_glUniform1f)(GLint location, GLfloat v0);
 typedef void (GLAPIENTRY *PFN_glUniform3f)(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
@@ -182,6 +183,7 @@ extern PFN_glUseProgram l3d_glUseProgram;
 extern PFN_glDeleteProgram l3d_glDeleteProgram;
 extern PFN_glGetUniformLocation l3d_glGetUniformLocation;
 extern PFN_glGetAttribLocation l3d_glGetAttribLocation;
+extern PFN_glBindAttribLocation l3d_glBindAttribLocation;
 extern PFN_glUniform1i l3d_glUniform1i;
 extern PFN_glUniform1f l3d_glUniform1f;
 extern PFN_glUniform3f l3d_glUniform3f;
@@ -242,6 +244,7 @@ extern PFN_glFinish l3d_glFinish;
 #define glDeleteProgram l3d_glDeleteProgram
 #define glGetUniformLocation l3d_glGetUniformLocation
 #define glGetAttribLocation l3d_glGetAttribLocation
+#define glBindAttribLocation l3d_glBindAttribLocation
 #define glUniform1i l3d_glUniform1i
 #define glUniform1f l3d_glUniform1f
 #define glUniform3f l3d_glUniform3f

@@ -2,9 +2,8 @@ file: simple.svg
 paths: 5  shapes: 5  colours in SVG: 5  slots: 5  materials: 5/8
 logo size: 200.00 x 111.11 mm  (scale 1.11111 mm/unit)
 model bbox: 200.00 x 111.11 x 2.20 mm
-triangles: 3120
-slot 1: #1E3A8A  shapes 1  area 16839.2 mm^2  z 0.00-2.00 mm  volume 44139.1 mm^3  tris 524  (body)
-slot 2: #10B981  shapes 1  area 2192.7 mm^2  z 2.00-2.20 mm  volume 438.5 mm^3  tris 28
-slot 3: #F59E0B  shapes 1  area 1861.9 mm^2  z 2.00-2.20 mm  volume 372.4 mm^3  tris 2048
-slot 4: #FFFFFF  shapes 1  area 617.3 mm^2  z 2.00-2.20 mm  volume 123.5 mm^3  tris 12
-slot 5: #EF4444  shapes 1  area 558.4 mm^2  z 2.00-2.20 mm  volume 111.7 mm^3  tris 508
+slot 1: #1E3A8A  shapes 1  area 16839.2 mm^2  z 0.00-2.00 mm  volume 44139.1 mm^3  (body)
+slot 2: #10B981  shapes 1  area 2192.7 mm^2  z 2.00-2.20 mm  volume 438.5 mm^3
+slot 3: #F59E0B  shapes 1  area 1861.9 mm^2  z 2.00-2.20 mm  volume 372.4 mm^3
+slot 4: #FFFFFF  shapes 1  area 617.3 mm^2  z 2.00-2.20 mm  volume 123.5 mm^3
+slot 5: #EF4444  shapes 1  area 558.4 mm^2  z 2.00-2.20 mm  volume 111.7 mm^3

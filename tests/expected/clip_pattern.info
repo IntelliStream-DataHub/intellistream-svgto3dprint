@@ -2,9 +2,8 @@ file: clip_pattern.svg
 paths: 92  shapes: 81  colours in SVG: 4  slots: 4  materials: 5/8
 logo size: 194.00 x 113.17 mm  (scale 1.01042 mm/unit)
 model bbox: 200.00 x 119.17 x 4.20 mm
-triangles: 26816
-base: #202020  2.0 mm thick  47651 mm^3  236 tris
-slot 1: #105984  shapes 1  area 15595.0 mm^2  z 2.00-4.00 mm  volume 43733.3 mm^3  tris 524  (body)
-slot 2: #FFFFFF  shapes 30  area 2767.3 mm^2  z 4.00-4.20 mm  volume 553.5 mm^3  tris 16980
-slot 3: #005984  shapes 1  area 2613.6 mm^2  z 4.00-4.20 mm  volume 522.7 mm^3  tris 24
-slot 4: #98BBC8  shapes 49  area 890.7 mm^2  z 4.00-4.20 mm  volume 178.1 mm^3  tris 9052
+base: #202020  2.0 mm thick  47651 mm^3
+slot 1: #105984  shapes 1  area 15595.0 mm^2  z 2.00-4.00 mm  volume 43733.3 mm^3  (body)
+slot 2: #FFFFFF  shapes 30  area 2767.3 mm^2  z 4.00-4.20 mm  volume 553.5 mm^3
+slot 3: #005984  shapes 1  area 2613.6 mm^2  z 4.00-4.20 mm  volume 522.7 mm^3
+slot 4: #98BBC8  shapes 49  area 890.7 mm^2  z 4.00-4.20 mm  volume 178.1 mm^3

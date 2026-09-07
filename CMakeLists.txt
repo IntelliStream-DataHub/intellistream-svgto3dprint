@@ -93,11 +93,49 @@ if(NOT SDL3_FOUND)
   endif()
 endif()
 
+# --- floating point --------------------------------------------------------
+# Contraction (folding a*b+c into one fused multiply-add) is left on, and
+# x86-64 is built with FMA so it is used there too rather than only on arm64.
+# It rounds once instead of twice, so the tessellator and the region booleans
+# reach a different - equally correct - triangulation of the same shape than a
+# host without one; tests/compare_info.py therefore checks the geometry (slots,
+# areas, volumes, closedness) and not the triangle counts.
+#
+# -mfma needs Haswell (2013) or newer.  Switch LOGO3D_X86_FMA off to build for
+# older x86-64 machines.
+option(LOGO3D_X86_FMA "Build x86-64 with FMA (needs Haswell/2013 or newer)" ON)
+
+include(CheckCCompilerFlag)
+set(LOGO3D_FP_FLAGS)
+if(MSVC)
+  if(LOGO3D_X86_FMA AND CMAKE_C_COMPILER_ARCHITECTURE_ID MATCHES "^([xX]64|[xX]86)$")
+    set(LOGO3D_FP_FLAGS /arch:AVX2)   # implies FMA3
+  endif()
+else()
+  set(LOGO3D_FP_FLAGS -ffp-contract=fast)   # gcc's default; clang's is per-statement
+  if(LOGO3D_X86_FMA)
+    if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+      # a universal build compiles every slice with the same command line, and
+      # -mfma is not a flag the arm64 slice accepts; -Xarch_ scopes it to x86-64
+      check_c_compiler_flag("-Xarch_x86_64 -mfma" LOGO3D_HAVE_XARCH_MFMA)
+      if(LOGO3D_HAVE_XARCH_MFMA)
+        list(APPEND LOGO3D_FP_FLAGS -Xarch_x86_64 -mfma)
+      endif()
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^([xX]86_64|AMD64|amd64)$")
+      check_c_compiler_flag(-mfma LOGO3D_HAVE_MFMA)
+      if(LOGO3D_HAVE_MFMA)
+        list(APPEND LOGO3D_FP_FLAGS -mfma)
+      endif()
+    endif()
+  endif()
+endif()
+
 # --- vendored libtess2 ----------------------------------------------------
 file(GLOB TESS2_SRC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libtess2/*.c)
 add_library(tess2 STATIC ${TESS2_SRC})
 target_include_directories(tess2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libtess2)
 target_compile_definitions(tess2 PRIVATE NDEBUG)
+target_compile_options(tess2 PRIVATE ${LOGO3D_FP_FLAGS})
 if(NOT MSVC)
   target_compile_options(tess2 PRIVATE -w)
 endif()
@@ -120,6 +158,7 @@ target_include_directories(logo3dprint PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nuklear
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
 target_link_libraries(logo3dprint PRIVATE tess2 SDL3::SDL3)
+target_compile_options(logo3dprint PRIVATE ${LOGO3D_FP_FLAGS})
 if(MSVC)
   target_compile_definitions(logo3dprint PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
@@ -140,6 +179,7 @@ install(TARGETS logo3dprint RUNTIME DESTINATION bin)
 add_executable(test_region tests/test_region.c src/region.c)
 target_include_directories(test_region PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(test_region PRIVATE tess2)
+target_compile_options(test_region PRIVATE ${LOGO3D_FP_FLAGS})
 if(NOT MSVC)
   target_compile_options(test_region PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_libraries(test_region PRIVATE m)

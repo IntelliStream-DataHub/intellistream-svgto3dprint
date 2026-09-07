@@ -311,6 +311,10 @@ int model_pick(const model_t *m, const model_params *p, const double *origin, co
 /* ------------------------------------------------------------------ */
 /* GL resources                                                        */
 
+/* vertex attribute slots shared by the shaders and the vertex arrays */
+#define ATTR_POSITION 0
+#define ATTR_NORMAL   1
+
 typedef struct {
     GLuint vao, vbo;
     int nverts;
@@ -344,16 +348,16 @@ static void part_gl_init(part_gl *pg)
     glGenBuffers(1, &pg->vbo);
     glBindVertexArray(pg->vao);
     glBindBuffer(GL_ARRAY_BUFFER, pg->vbo);
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(ATTR_POSITION);
+    glEnableVertexAttribArray(ATTR_NORMAL);
+    glVertexAttribPointer(ATTR_POSITION, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
+    glVertexAttribPointer(ATTR_NORMAL, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
     glGenVertexArrays(1, &pg->line_vao);
     glGenBuffers(1, &pg->line_vbo);
     glBindVertexArray(pg->line_vao);
     glBindBuffer(GL_ARRAY_BUFFER, pg->line_vbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(ATTR_POSITION);
+    glVertexAttribPointer(ATTR_POSITION, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
 }
 
 static void part_gl_free(part_gl *pg)
@@ -440,6 +444,16 @@ static GLuint compile(GLenum type, const char *src, char *err, size_t errlen)
     return s;
 }
 
+/* The vertex arrays feed attribute 0 = Position and attribute 1 = Normal, so
+ * both must be pinned before linking: left to the linker, drivers are free to
+ * number them any way they like (Apple's hands out 0 to Normal), which fed the
+ * normals in as positions and collapsed every solid to a speck. */
+static void bind_attribs(GLuint p)
+{
+    glBindAttribLocation(p, ATTR_POSITION, "Position");
+    glBindAttribLocation(p, ATTR_NORMAL, "Normal");
+}
+
 static GLuint link(const char *vs, const char *fs, char *err, size_t errlen)
 {
     GLuint v = compile(GL_VERTEX_SHADER, vs, err, errlen), f, p;
@@ -450,6 +464,7 @@ static GLuint link(const char *vs, const char *fs, char *err, size_t errlen)
     p = glCreateProgram();
     glAttachShader(p, v);
     glAttachShader(p, f);
+    bind_attribs(p);
     glLinkProgram(p);
     glDeleteShader(v);
     glDeleteShader(f);
@@ -484,8 +499,8 @@ render_t *render_create(char *err, size_t errlen)
     glGenBuffers(1, &r->tmp_vbo);
     glBindVertexArray(r->tmp_vao);
     glBindBuffer(GL_ARRAY_BUFFER, r->tmp_vbo);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(ATTR_POSITION);
+    glVertexAttribPointer(ATTR_POSITION, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
     glBindVertexArray(0);
     return r;
 }

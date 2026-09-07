@@ -11,6 +11,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/* Areas that agree to within a hair are a tie.  The same shape at a different
+ * offset sums its shoelace terms over different magnitudes, so equal geometry
+ * does not have to produce a bit-equal area, and a fused multiply-add shifts it
+ * again; deciding slot order or which colour survives a merge on the last bits
+ * made the output depend on the host.  The tolerance is far above that noise
+ * (~1e-16 relative) and far below any area difference that means anything. */
+static int area_cmp(double a, double b)
+{
+    double fa = fabs(a), fb = fabs(b), scale = fa > fb ? fa : fb;
+    if (fabs(a - b) <= 1e-9 * scale) return 0;
+    return a < b ? -1 : 1;
+}
+
 /* ------------------------------------------------------------------ */
 /* Mesh with vertex welding                                            */
 
@@ -162,7 +175,7 @@ int model_body_slot(const model_t *m, const model_params *p)
         b = -1;
         for (i = 0; i < m->nslots; i++) {
             if (m->slots[i].merged_into >= 0 || !p->slot_visible[i]) continue;
-            if (m->slots[i].area > best) { best = m->slots[i].area; b = i; }
+            if (b < 0 || area_cmp(m->slots[i].area, best) > 0) { best = m->slots[i].area; b = i; }
         }
         if (b < 0) return -1;
     }
@@ -631,6 +644,14 @@ static double colour_dist(unsigned a, unsigned b)
     return sqrt(dr * dr + dg * dg + db * db);
 }
 
+/* Slot order: largest area first, equal areas by rgb. */
+static int colour_before(const colour_entry *x, const colour_entry *y)
+{
+    int c = area_cmp(x->area, y->area);
+    if (c) return c > 0;
+    return x->rgb < y->rgb;
+}
+
 /* Bounding box of polylines. */
 static void polylist_bbox(const polylist *l, double *bb)
 {
@@ -931,8 +952,9 @@ int model_layout(model_t *m, const svg_doc *doc, const model_params *p, char *er
         }
         if (a < 0) break;
         if (alive <= limit && best > p->merge_threshold) break;
-        /* merge smaller into larger */
-        if (cols[a].area < cols[b].area) { int t = a; a = b; b = t; }
+        /* merge smaller into larger; on a tie the colour that appears first in
+         * the document survives (a is always the lower index) */
+        if (area_cmp(cols[a].area, cols[b].area) < 0) { int t = a; a = b; b = t; }
         cols[b].alive = 0;
         cols[b].target = a;
         cols[a].area += cols[b].area;
@@ -945,8 +967,7 @@ int model_layout(model_t *m, const svg_doc *doc, const model_params *p, char *er
         for (k = 0; k < ncols; k++) if (cols[k].alive && n < (int)(sizeof(order) / sizeof(order[0]))) order[n++] = k;
         for (k = 1; k < n; k++) {
             int v = order[k], q = k - 1;
-            while (q >= 0 && (cols[order[q]].area < cols[v].area ||
-                              (cols[order[q]].area == cols[v].area && cols[order[q]].rgb > cols[v].rgb))) { order[q + 1] = order[q]; q--; }
+            while (q >= 0 && colour_before(&cols[v], &cols[order[q]])) { order[q + 1] = order[q]; q--; }
             order[q + 1] = v;
         }
         if (n > MAX_SLOTS) n = MAX_SLOTS;
