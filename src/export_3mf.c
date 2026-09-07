@@ -65,69 +65,26 @@ static const char *rels =
     "  <Relationship Target=\"/3D/3dmodel.model\" Id=\"rel0\" Type=\"http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel\"/>\n"
     "</Relationships>\n";
 
-typedef struct {
-    int chunk;              /* index or -1 for the preview geometry */
-    int part;               /* -1 = all parts of the chunk in one object, else one part */
-    double tx, ty;          /* build item translation */
-    char name[96];
-    int asm_id;             /* id of the assembly object written for it */
-} obj_spec;
-
-int export_3mf(const model_t *m, const model_params *p, int chunk, int plate, const char *path, char *err, size_t errlen)
+static int write_3mf(const export_object *objs, int nobjs, const char *path, char *err, size_t errlen)
 {
-    obj_spec *objs = NULL;
-    int nobjs = 0, cobjs = 0;
     unsigned mats[MAX_SLOTS + 1];
     int nmats = 0;
     strbuf model, cfg, bbs;
     zip_writer z;
-    int i, j, k, ok;
-    int next_id;
-    int ci;
-    int all = plate >= 0 || chunk == -2;
+    int i, j, k, ok, next_id;
+    int *asm_ids;
 
     if (err && errlen) err[0] = 0;
-    if (!m->meshes_valid) {
-        if (err && errlen) snprintf(err, errlen, "nothing to export");
-        return 0;
-    }
-    /* which chunks, where, and one object per chunk or per (chunk, colour) */
-    for (ci = 0; ci < (all ? m->nchunks : 1); ci++) {
-        int ch = all ? ci : ((chunk >= 0 && chunk < m->nchunks) ? chunk : -1);
-        const chunk_t *c = ch >= 0 ? &m->chunks[ch] : NULL;
-        double tx = 0, ty = 0;
-        const char *cname = c ? c->name : "logo";
-        export_part parts[MAX_SLOTS + 1];
-        int n, np;
-        if (plate >= 0 && c->on_plate != plate) continue;
-        if (plate >= 0) { tx = c->plate_pos[0]; ty = c->plate_pos[1]; }
-        else if (chunk == -2) { tx = c->place[0] * c->scale; ty = c->place[1] * c->scale; }   /* the assembled layout, scaled like the geometry */
-        n = export_collect_parts(m, p, ch, parts);
-        np = p->export_color_objects ? n : (n > 0 ? 1 : 0);
-        for (j = 0; j < np; j++) {
-            if (nobjs == cobjs) { cobjs = cobjs ? cobjs * 2 : 16; objs = (obj_spec *)realloc(objs, sizeof(obj_spec) * (size_t)cobjs); }
-            objs[nobjs].chunk = ch;
-            objs[nobjs].part = p->export_color_objects ? j : -1;
-            objs[nobjs].tx = tx;
-            objs[nobjs].ty = ty;
-            objs[nobjs].asm_id = 0;
-            if (p->export_color_objects) {
-                if (all || m->nchunks > 1) snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s_%s", cname, parts[j].name);
-                else snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s", parts[j].name);
-            } else snprintf(objs[nobjs].name, sizeof(objs[nobjs].name), "%s", cname);
-            nobjs++;
+    for (i = 0; i < nobjs; i++)
+        for (j = 0; j < objs[i].n; j++) {
+            for (k = 0; k < nmats; k++) if (mats[k] == objs[i].parts[j].rgb) break;
+            if (k == nmats && nmats < MAX_SLOTS + 1) mats[nmats++] = objs[i].parts[j].rgb;
         }
-        for (j = 0; j < n; j++) {
-            for (k = 0; k < nmats; k++) if (mats[k] == parts[j].rgb) break;
-            if (k == nmats && nmats < MAX_SLOTS + 1) mats[nmats++] = parts[j].rgb;
-        }
-        export_release_parts(parts, n);
-    }
     if (nmats == 0 || nobjs == 0) {
-        free(objs);
         if (err && errlen) snprintf(err, errlen, "nothing to export");
         return 0;
     }
+    asm_ids = (int *)calloc((size_t)nobjs, sizeof(int));
 
     memset(&model, 0, sizeof(model));
     memset(&cfg, 0, sizeof(cfg));
@@ -155,12 +112,9 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, int plate, co
      * offers to merge them into one multi-part object. */
     next_id = 3;
     for (i = 0; i < nobjs; i++) {
-        export_part allp[MAX_SLOTS + 1], parts[MAX_SLOTS + 1];
-        int nall = export_collect_parts(m, p, objs[i].chunk, allp), n;
-        int first_id = next_id, asm_id;
-        if (objs[i].part >= 0) { n = objs[i].part < nall ? 1 : 0; if (n) parts[0] = allp[objs[i].part]; }
-        else { n = nall; for (j = 0; j < n; j++) parts[j] = allp[j]; }
-        if (n == 0) { export_release_parts(allp, nall); continue; }
+        const export_part *parts = objs[i].parts;
+        int n = objs[i].n, first_id = next_id, asm_id;
+        if (n == 0) continue;
         for (j = 0; j < n; j++) {
             const mesh_t *mesh = export_part_mesh(&parts[j]);
             int mat = 0, id = next_id++;
@@ -198,22 +152,21 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, int plate, co
             sb_put(&bbs, "    </part>\n");
         }
         sb_put(&bbs, "  </object>\n");
-        objs[i].asm_id = asm_id;
-        export_release_parts(allp, nall);
+        asm_ids[i] = asm_id;
     }
     sb_put(&cfg, "</config>\n");
     sb_put(&bbs, "</config>\n");
     sb_put(&model, " </resources>\n <build>\n");
     for (i = 0; i < nobjs; i++) {
-        if (objs[i].asm_id <= 0) continue;
+        if (asm_ids[i] <= 0) continue;
         if (objs[i].tx != 0 || objs[i].ty != 0)
-            sb_printf(&model, "  <item objectid=\"%d\" transform=\"1 0 0 0 1 0 0 0 1 %.4f %.4f 0\"/>\n", objs[i].asm_id, objs[i].tx, objs[i].ty);
+            sb_printf(&model, "  <item objectid=\"%d\" transform=\"1 0 0 0 1 0 0 0 1 %.4f %.4f 0\"/>\n", asm_ids[i], objs[i].tx, objs[i].ty);
         else
-            sb_printf(&model, "  <item objectid=\"%d\"/>\n", objs[i].asm_id);
+            sb_printf(&model, "  <item objectid=\"%d\"/>\n", asm_ids[i]);
     }
     sb_put(&model, " </build>\n</model>\n");
+    free(asm_ids);
 
-    free(objs);
     if (!zip_open(&z, path)) {
         free(model.s);
         free(cfg.s);
@@ -231,5 +184,81 @@ int export_3mf(const model_t *m, const model_params *p, int chunk, int plate, co
     free(cfg.s);
     free(bbs.s);
     if (!ok && err && errlen) snprintf(err, errlen, "write error on '%s'", path);
+    return ok;
+}
+
+int export_objects_3mf(const export_object *objs, int n, const char *path, char *err, size_t errlen)
+{
+    return write_3mf(objs, n, path, err, errlen);
+}
+
+int export_3mf(const model_t *m, const model_params *p, int chunk, int plate, const char *path, char *err, size_t errlen)
+{
+    export_object *objs = NULL;
+    int nobjs = 0, cobjs = 0;
+    int i, j, ok, ci;
+    int all = plate >= 0 || chunk == -2;
+
+    if (err && errlen) err[0] = 0;
+    if (!m->meshes_valid) {
+        if (err && errlen) snprintf(err, errlen, "nothing to export");
+        return 0;
+    }
+    /* which chunks, where, and one object per chunk or per (chunk, colour) */
+    for (ci = 0; ci < (all ? m->nchunks : 1); ci++) {
+        int ch = all ? ci : ((chunk >= 0 && chunk < m->nchunks) ? chunk : -1);
+        const chunk_t *c = ch >= 0 ? &m->chunks[ch] : NULL;
+        double tx = 0, ty = 0;
+        const char *cname = c ? c->name : "logo";
+        export_part parts[MAX_SLOTS + 1];
+        int n;
+        if (plate >= 0 && c->on_plate != plate) continue;
+        if (plate >= 0) { tx = c->plate_pos[0]; ty = c->plate_pos[1]; }
+        else if (chunk == -2) { tx = c->place[0] * c->scale; ty = c->place[1] * c->scale; }   /* the assembled layout, scaled like the geometry */
+        n = export_collect_parts(m, p, ch, parts);
+        if (n == 0) continue;
+        if (nobjs + n > cobjs) { cobjs = (nobjs + n) * 2 + 8; objs = (export_object *)realloc(objs, sizeof(export_object) * (size_t)cobjs); }
+        if (p->export_color_objects) {
+            for (j = 0; j < n; j++) {
+                export_object *o = &objs[nobjs++];
+                o->parts[0] = parts[j];     /* takes over the rotated copy */
+                o->n = 1;
+                o->tx = tx;
+                o->ty = ty;
+                if (all || m->nchunks > 1) snprintf(o->name, sizeof(o->name), "%s_%s", cname, parts[j].name);
+                else snprintf(o->name, sizeof(o->name), "%s", parts[j].name);
+            }
+        } else {
+            export_object *o = &objs[nobjs++];
+            for (j = 0; j < n; j++) o->parts[j] = parts[j];
+            o->n = n;
+            o->tx = tx;
+            o->ty = ty;
+            snprintf(o->name, sizeof(o->name), "%s", cname);
+        }
+    }
+    /* every piece in one file: the keys come along as objects of their own,
+     * in a grid in front of the layout, so the slicer's Arrange finds them */
+    if (chunk == -2 && plate < 0 && m->nkeys > 0) {
+        mesh_t *kmeshes;
+        export_object *kobjs;
+        double s = m->chunk_uniform_scale > 0 ? m->chunk_uniform_scale : 1;
+        int nk;
+        nk = export_collect_keys(m, p, m->bbox_min[0] * s, m->bbox_min[1] * s - 12, &kmeshes, &kobjs);
+        if (nk > 0) {
+            objs = (export_object *)realloc(objs, sizeof(export_object) * (size_t)(nobjs + nk));
+            for (j = 0; j < nk; j++) objs[nobjs + j] = kobjs[j];
+            ok = write_3mf(objs, nobjs + nk, path, err, errlen);
+            for (j = 0; j < nk; j++) mesh_free(&kmeshes[j]);
+            free(kmeshes);
+            free(kobjs);
+            for (i = 0; i < nobjs; i++) export_release_parts(objs[i].parts, objs[i].n);
+            free(objs);
+            return ok;
+        }
+    }
+    ok = write_3mf(objs, nobjs, path, err, errlen);
+    for (i = 0; i < nobjs; i++) export_release_parts(objs[i].parts, objs[i].n);
+    free(objs);
     return ok;
 }

@@ -260,6 +260,7 @@ void model_free(model_t *m)
     region_free(&m->footprint);
     model_free_view(m);
     model_free_chunks(m);
+    free(m->keys);
     model_init(m);
 }
 
@@ -1176,6 +1177,257 @@ static void plate_build(region_t *out, const double *rect, const double *rad, co
     *out = norm;
 }
 
+/* ------------------------------------------------------------------ */
+/* Sliding dovetail keys                                               */
+/*
+ * A key is a separate bar with a dovetail cross-section that slides in a
+ * slot on the underside of two neighbouring plates, across their seam.  The
+ * slot is open at the underside (the mouth), widens towards its ceiling, and
+ * runs at a right angle to the seam: from the seam face into the piece,
+ * closed at the far end.  Printed flat that needs no support: the flanks lean
+ * away from the cavity going up, the ceiling is a short bridge between the
+ * slot walls, and the key is printed wide face down.
+ *
+ * The socket-side piece of a seam (left or lower piece) gets the long slot
+ * that parks the whole key; the tab-side piece gets a slot half a key long
+ * with a stop.  After the pieces are dropped together (jigsaw tabs) the key is
+ * pushed through the mouth with a fingernail until it hits the stop, so it
+ * straddles the seam and holds the pieces down to each other.  Pushing it back
+ * frees them again.  The jigsaw tabs keep holding the pieces in the plane.
+ */
+
+static int extrude_region(mesh_t *mesh, const region_t *r, double z0, double z1);
+static void mesh_append_raw(mesh_t *dst, const mesh_t *src);
+
+#define KEY_MOUTH 4.0           /* slot width at the underside */
+#define KEY_CEIL 7.0            /* slot width under the ceiling */
+#define KEY_LEDGE_H 0.4         /* vertical mouth wall before the flank starts */
+#define KEY_WALL 1.0            /* plate material kept beside the slot */
+#define KEY_ZONE (KEY_CEIL + 2 * KEY_WALL)
+#define KEY_LEN_MAX 24.0
+#define KEY_LEN_MIN 10.0
+#define KEY_PARK 1.5            /* a parked key sits this far behind the seam face */
+#define KEY_END_FREE 6.0        /* slot centre from a free end of the seam */
+#define KEY_END_CORNER 32.0     /* ... from an end that meets a perpendicular seam (clears its slots and sockets) */
+
+/* Slot cavity cross-section: mouth width wm at z 0..zl, flanks to width wc at height zc. */
+static void key_dims(const model_params *p, double *wm, double *wc, double *zl, double *zc)
+{
+    double t = p->base_thickness, ceil_h = 0.3 * t;
+    if (ceil_h < 1.0) ceil_h = 1.0;
+    *wm = KEY_MOUTH;
+    *wc = KEY_CEIL;
+    *zl = KEY_LEDGE_H;
+    *zc = t - ceil_h;
+}
+
+/* Prism of a 2D region along an axis.  axis 0: the region is in (y, z) and
+ * is swept along x from c0 to c1; axis 1: the region is in (z, x), swept along
+ * y.  Both are cyclic permutations of extrude_region's (x, y, z), so the
+ * triangle orientation survives.  Appended as a closed shell of its own. */
+static void sweep_region(mesh_t *mesh, const region_t *prof, double c0, double c1, int axis)
+{
+    mesh_t tmp;
+    int i;
+    mesh_init(&tmp);
+    if (!extrude_region(&tmp, prof, c0, c1)) { mesh_free(&tmp); return; }
+    for (i = 0; i < tmp.nv; i++) {
+        double a = tmp.v[3 * i], b = tmp.v[3 * i + 1], c = tmp.v[3 * i + 2];
+        if (axis == 0) { tmp.v[3 * i] = c; tmp.v[3 * i + 1] = a; tmp.v[3 * i + 2] = b; }
+        else { tmp.v[3 * i] = b; tmp.v[3 * i + 1] = c; tmp.v[3 * i + 2] = a; }
+    }
+    mesh_append_raw(mesh, &tmp);
+    mesh_free(&tmp);
+}
+
+/* Material of a slot zone in cross-section: an arch around the cavity, in
+ * (across, z) with the slot centred at across = 0.  half = KEY_ZONE / 2. */
+static void arch_profile(region_t *out, const model_params *p, double t, double half)
+{
+    double wm, wc, zl, zc, q[20];
+    region_t raw;
+    key_dims(p, &wm, &wc, &zl, &zc);
+    q[0] = -half; q[1] = 0;
+    q[2] = -wm / 2; q[3] = 0;
+    q[4] = -wm / 2; q[5] = zl;
+    q[6] = -wc / 2; q[7] = zc;
+    q[8] = wc / 2; q[9] = zc;
+    q[10] = wm / 2; q[11] = zl;
+    q[12] = wm / 2; q[13] = 0;
+    q[14] = half; q[15] = 0;
+    q[16] = half; q[17] = t;
+    q[18] = -half; q[19] = t;
+    region_init(&raw);
+    add_piece(&raw, q, 10);
+    region_normalize(out, &raw, 0);
+    region_free(&raw);
+}
+
+/* Key cross-section as printed (wide face down), in (across, z). */
+static void key_profile(region_t *out, const model_params *p)
+{
+    double wm, wc, zl, zc, cl = p->joint_clearance, kc, h, q[12];
+    region_t raw;
+    key_dims(p, &wm, &wc, &zl, &zc);
+    h = zc - 2 * cl;                                            /* key height */
+    kc = wm / 2 + (wc - wm) / 2 * (zc - cl - zl) / (zc - zl) - cl;   /* half width at the wide face */
+    q[0] = -kc; q[1] = 0;
+    q[2] = kc; q[3] = 0;
+    q[4] = wm / 2 - cl; q[5] = zc - cl - zl;
+    q[6] = wm / 2 - cl; q[7] = h;
+    q[8] = -wm / 2 + cl; q[9] = h;
+    q[10] = -wm / 2 + cl; q[11] = zc - cl - zl;
+    region_init(&raw);
+    add_piece(&raw, q, 6);
+    region_normalize(out, &raw, 0);
+    region_free(&raw);
+}
+
+void model_key_size(const model_params *p, double *w, double *h)
+{
+    double wm, wc, zl, zc, cl = p->joint_clearance;
+    key_dims(p, &wm, &wc, &zl, &zc);
+    *w = 2 * (wm / 2 + (wc - wm) / 2 * (zc - cl - zl) / (zc - zl) - cl);
+    *h = zc - 2 * cl;
+}
+
+/* A key of length len; sxy scales its footprint like a shrunk piece's slot. */
+static void key_mesh_len(const model_params *p, double len, double sxy, mesh_t *out)
+{
+    region_t prof;
+    int i, j;
+    key_profile(&prof, p);
+    for (i = 0; i < prof.n; i++)
+        for (j = 0; j < prof.c[i].n; j++) prof.c[i].pts[2 * j] *= sxy;
+    region_update_bbox(&prof);
+    mesh_init(out);
+    sweep_region(out, &prof, -len * sxy / 2, len * sxy / 2, 0);
+    region_free(&prof);
+}
+
+int model_key_mesh(const model_t *m, const model_params *p, int k, mesh_t *out)
+{
+    if (k < 0 || k >= m->nkeys) return 0;
+    key_mesh_len(p, m->keys[k].len, m->chunks[m->keys[k].a].scale, out);
+    return 1;
+}
+
+/* One key slot of a plate: side as in dovetail_side, centre along that side
+ * (local coords) and depth into the plate. */
+typedef struct {
+    int side;
+    double c, len;
+} key_slot;
+
+/* Plate mesh: the region extruded, minus the slot zones, which are added back
+ * as swept arches around their cavities. */
+static void plate_mesh(mesh_t *mesh, const region_t *region, const double *rect, const key_slot *slots, int nslots, double t, const model_params *p)
+{
+    region_t cut, zones, nz;
+    const region_t *rs[1];
+    int k;
+    if (nslots == 0) { extrude_region(mesh, region, 0, t); return; }
+    region_init(&zones);
+    for (k = 0; k < nslots; k++) {
+        const key_slot *ks = &slots[k];
+        double q[8], h = KEY_ZONE / 2, e = 0.1, x0, y0, x1, y1;
+        if (ks->side == 0) { x0 = rect[0] - e; x1 = rect[0] + ks->len; y0 = ks->c - h; y1 = ks->c + h; }
+        else if (ks->side == 1) { x0 = rect[2] - ks->len; x1 = rect[2] + e; y0 = ks->c - h; y1 = ks->c + h; }
+        else if (ks->side == 2) { y0 = rect[1] - e; y1 = rect[1] + ks->len; x0 = ks->c - h; x1 = ks->c + h; }
+        else { y0 = rect[3] - ks->len; y1 = rect[3] + e; x0 = ks->c - h; x1 = ks->c + h; }
+        q[0] = x0; q[1] = y0; q[2] = x1; q[3] = y1;
+        /* rectangle */
+        {
+            double r[8] = {q[0], q[1], q[2], q[1], q[2], q[3], q[0], q[3]};
+            add_piece(&zones, r, 4);
+        }
+    }
+    region_normalize(&nz, &zones, 0);
+    region_free(&zones);
+    rs[0] = &nz;
+    if (!region_subtract(&cut, region, rs, 1)) { region_free(&nz); extrude_region(mesh, region, 0, t); return; }
+    region_free(&nz);
+    region_clean(&cut, 1e-4);
+    extrude_region(mesh, &cut, 0, t);
+    region_free(&cut);
+    for (k = 0; k < nslots; k++) {
+        const key_slot *ks = &slots[k];
+        region_t prof, moved;
+        int i;
+        arch_profile(&prof, p, t, KEY_ZONE / 2);
+        /* the profile is (across, z); an axis 0 sweep wants (y, z), an axis 1
+         * sweep (z, x), both with the slot centre added to the across coordinate */
+        region_copy(&moved, &prof);
+        for (i = 0; i < moved.n; i++) {
+            int j;
+            for (j = 0; j < moved.c[i].n; j++) {
+                double across = moved.c[i].pts[2 * j] + ks->c, z = moved.c[i].pts[2 * j + 1];
+                if (ks->side < 2) { moved.c[i].pts[2 * j] = across; moved.c[i].pts[2 * j + 1] = z; }
+                else { moved.c[i].pts[2 * j] = z; moved.c[i].pts[2 * j + 1] = across; }
+            }
+            if (ks->side >= 2) contour_reverse(&moved.c[i]);   /* a transposition mirrors the winding */
+        }
+        region_update_bbox(&moved);
+        if (ks->side == 0) sweep_region(mesh, &moved, rect[0], rect[0] + ks->len, 0);
+        else if (ks->side == 1) sweep_region(mesh, &moved, rect[2] - ks->len, rect[2], 0);
+        else if (ks->side == 2) sweep_region(mesh, &moved, rect[1], rect[1] + ks->len, 1);
+        else sweep_region(mesh, &moved, rect[3] - ks->len, rect[3], 1);
+        region_free(&moved);
+        region_free(&prof);
+    }
+}
+
+/* Where the keys of one seam go.  A is the socket-side piece (left / lower),
+ * B the tab-side piece.  Everything in model coordinates along the seam, so
+ * both pieces reach the same answer.  Returns the number of keys (0..2) and
+ * shrinks the tab range [t0, t1] to keep clear of them. */
+typedef struct {
+    int n;
+    double c[2];        /* slot centres along the seam */
+    double len;         /* key length */
+    double t0, t1;      /* tab range along the seam */
+} seam_keys;
+
+/* vertical: the seam runs along y (its slots along x).  Slots near a corner
+ * where a perpendicular seam starts keep clear of that seam's slots and
+ * sockets: along-x slots stay a whole parking slot away from the corner,
+ * along-y slots the socket depth. */
+static void seam_key_layout(const model_params *p, double s0, double s1, double wA, double wB, int corner0, int corner1, int vertical, seam_keys *out)
+{
+    double cl = p->joint_clearance, len, e0, e1, keep, lo = s0, hi = s1, park = KEY_PARK + cl + KEY_ZONE / 2 + 2.0;
+    int want0 = 1, want1 = 1;
+    out->n = 0;
+    out->t0 = s0;
+    out->t1 = s1;
+    if (p->chunk_joints != JOINTS_KEYS || p->base_thickness < KEY_MIN_PLATE - 1e-9) return;
+    /* the long slot and the neighbouring seam's short slot share the plate width */
+    len = KEY_LEN_MAX;
+    if ((wA - 5 - cl) / 1.5 < len) len = (wA - 5 - cl) / 1.5;
+    if ((wB - 5 - cl) / 1.5 < len) len = (wB - 5 - cl) / 1.5;
+    keep = KEY_ZONE / 2 + 1.5;
+    /* tabs keep the in-plane hold and come first: drop keys, then shorten
+     * the key at a corner, until the tabs have room */
+    for (;;) {
+        len = floor(len * 2) / 2;
+        if (len < KEY_LEN_MIN) { want0 = want1 = 0; break; }
+        e0 = corner0 ? (vertical ? len + park : 20.0) : KEY_END_FREE;
+        e1 = corner1 ? (vertical ? len + park : 20.0) : KEY_END_FREE;
+        lo = s0 + (want0 ? e0 + keep : 0);
+        hi = s1 - (want1 ? e1 + keep : 0);
+        if (hi - lo >= 8 || (!want0 && !want1)) break;
+        if (want0 && want1) { if (e1 > e0 || (e1 == e0 && corner1)) want1 = 0; else want0 = 0; }
+        else if (vertical && ((want0 && corner0) || (want1 && corner1)) && s1 - s0 - 8 - keep - park >= KEY_LEN_MIN)
+            len = s1 - s0 - 8 - keep - park;    /* a shorter key fits beside the corner */
+        else want0 = want1 = 0;
+    }
+    if (!want0 && !want1) { out->t0 = s0; out->t1 = s1; return; }
+    if (want0) out->c[out->n++] = s0 + e0;
+    if (want1) out->c[out->n++] = s1 - e1;
+    out->len = len;
+    out->t0 = lo;
+    out->t1 = hi;
+}
+
 /* Neighbour of chunk i in the same tile group: side 0 left, 1 right, 2 bottom, 3 top; -1 if none. */
 static int tile_neighbour(const model_t *m, int i, int side)
 {
@@ -1204,6 +1456,25 @@ static int strip_neighbour(const model_t *m, int i, int side, double gx0, double
         if (d < bestd) { bestd = d; best = k; }
     }
     return best;
+}
+
+/* Neighbours of chunk i on every side: tile neighbours, and in object mode
+ * the nearest pieces of the same row to the left / right (connected strips). */
+static void chunk_neighbours(const model_t *m, const model_params *p, int i, int *nb)
+{
+    const chunk_t *c = &m->chunks[i];
+    double gx0 = DBL_MAX, gx1 = -DBL_MAX;
+    int q, side;
+    for (q = 0; q < m->nchunks; q++) {
+        if (m->chunks[q].group != c->group) continue;
+        if (m->chunks[q].tile[0] < gx0) gx0 = m->chunks[q].tile[0];
+        if (m->chunks[q].tile[2] > gx1) gx1 = m->chunks[q].tile[2];
+    }
+    for (side = 0; side < 4; side++) nb[side] = tile_neighbour(m, i, side);
+    if (p->chunk_mode != CHUNK_TILES) {
+        if (nb[0] < 0) nb[0] = strip_neighbour(m, i, 0, gx0, gx1);
+        if (nb[1] < 0) nb[1] = strip_neighbour(m, i, 1, gx0, gx1);
+    }
 }
 
 /* Plate rectangles of every chunk (model coords), from tile cut lines, row extents and margins. */
@@ -1770,12 +2041,16 @@ void mesh_xform_copy(mesh_t *dst, const mesh_t *src, double deg, double sxy)
 {
     double a = deg * M_PI / 180.0, c = cos(a) * sxy, s = sin(a) * sxy;
     int i;
+    unsigned *map;
     mesh_init(dst);
+    /* shells appended raw share coordinates, which welding merges: map the indices */
+    map = (unsigned *)malloc(sizeof(unsigned) * (size_t)(src->nv > 0 ? src->nv : 1));
     for (i = 0; i < src->nv; i++) {
         double x = src->v[3 * i], y = src->v[3 * i + 1];
-        mesh_add_vertex(dst, c * x - s * y, s * x + c * y, src->v[3 * i + 2]);
+        map[i] = mesh_add_vertex(dst, c * x - s * y, s * x + c * y, src->v[3 * i + 2]);
     }
-    for (i = 0; i < src->nt; i++) mesh_add_tri(dst, src->t[3 * i], src->t[3 * i + 1], src->t[3 * i + 2]);
+    for (i = 0; i < src->nt; i++) mesh_add_tri(dst, map[src->t[3 * i]], map[src->t[3 * i + 1]], map[src->t[3 * i + 2]]);
+    free(map);
 }
 
 void region_xform_copy(region_t *dst, const region_t *src, double deg, double sxy)
@@ -2064,6 +2339,7 @@ static void compute_chunks(model_t *m, const model_params *p)
     m->chunk_max_w_used = p->chunk_max_w;
     m->chunk_max_d_used = p->chunk_max_d;
     m->chunk_oversize_used = p->chunk_oversize;
+    m->chunk_joints_used = p->chunk_joints;
     if (p->chunk_mode != CHUNK_OBJECTS) m->chunk_fit_scale = 1;
 }
 
@@ -2074,6 +2350,7 @@ static int chunk_params_changed(const model_t *m, const model_params *p)
     if (p->chunk_mode == CHUNK_OFF) return 0;
     if (m->chunk_join_used != p->chunk_join_pct || m->chunk_oversize_used != p->chunk_oversize) return 1;
     if (m->chunk_max_w_used != p->chunk_max_w || m->chunk_max_d_used != p->chunk_max_d) return 1;
+    if ((m->chunk_joints_used != 0) != (p->chunk_joints != 0)) return 1;   /* the tabs' room changes the tile size */
     return 0;
 }
 
@@ -2128,11 +2405,17 @@ int model_build_meshes(model_t *m, const model_params *p)
     m->z_logo_bottom = z0;
     if (chunk_params_changed(m, p)) compute_chunks(m, p);
 
+    m->nkeys = 0;
+    m->keys_too_thin = (p->chunk_mode != CHUNK_OFF && p->chunk_joints == JOINTS_KEYS && z0 > 0 && z0 < KEY_MIN_PLATE - 1e-9);
+
     /* per-chunk base plate and meshes in local coordinates */
     for (i = 0; i < m->nchunks; i++) {
         chunk_t *c = &m->chunks[i];
         double lminx = c->gmin[0] - c->center[0], lminy = c->gmin[1] - c->center[1];
         double lmaxx = c->gmax[0] - c->center[0], lmaxy = c->gmax[1] - c->center[1];
+        key_slot slots[8];
+        int nslots = 0;
+        double rect[4];
         region_free(&c->base_region);
         mesh_free(&c->base_mesh);
         for (s = 0; s < MAX_SLOTS; s++) mesh_free(&c->slot_mesh[s]);
@@ -2142,22 +2425,11 @@ int model_build_meshes(model_t *m, const model_params *p)
         if (z0 > 0) {
             if (p->chunk_mode != CHUNK_OFF && p->chunk_joints && m->nchunks > 1) {
                 /* connected plates: cut lines, row extents and dovetails towards every neighbour */
-                double rect[4], rad[4];
+                double rad[4];
                 joint_spec js[4];
-                int nb[4], sL, sR, side;
-                double gx0 = DBL_MAX, gx1 = -DBL_MAX;
-                int q;
+                int nb[4], side;
                 if (i == 0) compute_plates(m, p, mg);
-                for (q = 0; q < m->nchunks; q++) {
-                    if (m->chunks[q].group != c->group) continue;
-                    if (m->chunks[q].tile[0] < gx0) gx0 = m->chunks[q].tile[0];
-                    if (m->chunks[q].tile[2] > gx1) gx1 = m->chunks[q].tile[2];
-                }
-                for (side = 0; side < 4; side++) nb[side] = tile_neighbour(m, i, side);
-                sL = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 0, gx0, gx1);
-                sR = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 1, gx0, gx1);
-                if (nb[0] < 0 && sL >= 0) nb[0] = sL;
-                if (nb[1] < 0 && sR >= 0) nb[1] = sR;
+                chunk_neighbours(m, p, i, nb);
                 rect[0] = c->plate[0] - c->center[0]; rect[1] = c->plate[1] - c->center[1];
                 rect[2] = c->plate[2] - c->center[0]; rect[3] = c->plate[3] - c->center[1];
                 /* corners are rounded only where both adjacent sides are free */
@@ -2182,13 +2454,54 @@ int model_build_meshes(model_t *m, const model_params *p)
                 }
                 c->plate_first = nb[0] < 0;
                 c->plate_last = nb[1] < 0;
+                /* sliding dovetail keys across every seam; the tabs move out of their way */
+                for (side = 0; side < 4; side++) {
+                    const chunk_t *o;
+                    int nbo[4], a_is_c = (side == 1 || side == 3), q;
+                    double s0, s1, wA, wB, org;
+                    seam_keys sk;
+                    if (nb[side] < 0 || js[side].type == 0) continue;
+                    o = &m->chunks[nb[side]];
+                    chunk_neighbours(m, p, nb[side], nbo);
+                    if (side < 2) {
+                        s0 = c->plate[1] > o->plate[1] ? c->plate[1] : o->plate[1];
+                        s1 = c->plate[3] < o->plate[3] ? c->plate[3] : o->plate[3];
+                        wA = (a_is_c ? c : o)->plate[2] - (a_is_c ? c : o)->plate[0];
+                        wB = (a_is_c ? o : c)->plate[2] - (a_is_c ? o : c)->plate[0];
+                        org = c->center[1];
+                        seam_key_layout(p, s0, s1, wA, wB, nb[2] >= 0 || nbo[2] >= 0, nb[3] >= 0 || nbo[3] >= 0, 1, &sk);
+                    } else {
+                        s0 = c->plate[0] > o->plate[0] ? c->plate[0] : o->plate[0];
+                        s1 = c->plate[2] < o->plate[2] ? c->plate[2] : o->plate[2];
+                        wA = (a_is_c ? c : o)->plate[3] - (a_is_c ? c : o)->plate[1];
+                        wB = (a_is_c ? o : c)->plate[3] - (a_is_c ? o : c)->plate[1];
+                        org = c->center[0];
+                        seam_key_layout(p, s0, s1, wA, wB, nb[0] >= 0 || nbo[0] >= 0, nb[1] >= 0 || nbo[1] >= 0, 0, &sk);
+                    }
+                    js[side].s0 = sk.t0 - org;
+                    js[side].s1 = sk.t1 - org;
+                    for (q = 0; q < sk.n; q++) {
+                        slots[nslots].side = side;
+                        slots[nslots].c = sk.c[q] - org;
+                        slots[nslots].len = a_is_c ? sk.len + KEY_PARK + p->joint_clearance : sk.len / 2 + KEY_PARK;
+                        nslots++;
+                        if (a_is_c) {
+                            m->keys = (joint_key_t *)realloc(m->keys, sizeof(joint_key_t) * (size_t)(m->nkeys + 1));
+                            m->keys[m->nkeys].len = sk.len;
+                            m->keys[m->nkeys].a = i;
+                            m->keys[m->nkeys].b = nb[side];
+                            m->keys[m->nkeys].side = side;
+                            m->nkeys++;
+                        }
+                    }
+                }
                 plate_build(&c->base_region, rect, rad, js, p->joint_clearance, p->curve_tol_mm);
             } else {
-
-                rounded_rect(&c->base_region, lminx - mg, lminy - mg, lmaxx + mg, lmaxy + mg, p->base_radius, p->curve_tol_mm);
+                rect[0] = lminx - mg; rect[1] = lminy - mg; rect[2] = lmaxx + mg; rect[3] = lmaxy + mg;
+                rounded_rect(&c->base_region, rect[0], rect[1], rect[2], rect[3], p->base_radius, p->curve_tol_mm);
             }
             if (c->base_region.n) {
-                extrude_region(&c->base_mesh, &c->base_region, 0, z0);
+                plate_mesh(&c->base_mesh, &c->base_region, rect, slots, nslots, z0, p);
                 c->ntris += c->base_mesh.nt;
                 mesh_bbox(&c->base_mesh, c->bbox_min, c->bbox_max);
             }
@@ -2507,4 +2820,62 @@ int model_build_view(model_t *m, const model_params *p)
     }
     m->meshes_valid = 1;
     return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Joint test print                                                    */
+
+int model_build_coupon(const model_params *p, mesh_t *left, mesh_t *right, mesh_t *key, double *gap)
+{
+    const double W = 44, D = 36;                    /* one plate; the seam is at x = 0 */
+    double rectL[4] = {-W, -D / 2, 0, D / 2}, rectR[4] = {0, -D / 2, W, D / 2};
+    double radL[4] = {p->base_radius, 0, 0, p->base_radius}, radR[4] = {0, p->base_radius, p->base_radius, 0};
+    joint_spec jsL[4], jsR[4];
+    key_slot slL[2], slR[2];
+    int nL = 0, nR = 0, k, n = 2;
+    seam_keys sk;
+    region_t reg;
+    double t = p->base_thickness;
+    mesh_init(left);
+    mesh_init(right);
+    mesh_init(key);
+    memset(slL, 0, sizeof(slL));
+    memset(slR, 0, sizeof(slR));
+    *gap = 5;
+    if (!p->base_enabled || t <= 0 || p->chunk_joints == JOINTS_NONE) return 0;
+    memset(jsL, 0, sizeof(jsL));
+    memset(jsR, 0, sizeof(jsR));
+    /* one key from the bottom end when keys are on; the tabs take the rest */
+    seam_key_layout(p, -D / 2, D / 2, W, W, 0, 1, 1, &sk);
+    jsL[1].type = 2; jsL[1].s0 = sk.t0; jsL[1].s1 = sk.t1;      /* left plate: sockets on its right edge */
+    jsR[0].type = 1; jsR[0].s0 = sk.t0; jsR[0].s1 = sk.t1;      /* right plate: tabs on its left edge */
+    for (k = 0; k < sk.n; k++) {
+        slL[nL].side = 1; slL[nL].c = sk.c[k]; slL[nL].len = sk.len + KEY_PARK + p->joint_clearance; nL++;
+        slR[nR].side = 0; slR[nR].c = sk.c[k]; slR[nR].len = sk.len / 2 + KEY_PARK; nR++;
+    }
+    plate_build(&reg, rectL, radL, jsL, p->joint_clearance, p->curve_tol_mm);
+    plate_mesh(left, &reg, rectL, slL, nL, t, p);
+    region_free(&reg);
+    plate_build(&reg, rectR, radR, jsR, p->joint_clearance, p->curve_tol_mm);
+    plate_mesh(right, &reg, rectR, slR, nR, t, p);
+    region_free(&reg);
+    if (sk.n > 0) {
+        mesh_t km;
+        key_mesh_len(p, sk.len, 1, &km);
+        mesh_append_raw(key, &km);
+        mesh_free(&km);
+        n = 3;
+    }
+    /* centre each mesh on its own footprint */
+    {
+        mesh_t *ms[3] = {left, right, key};
+        int i;
+        for (i = 0; i < n; i++) {
+            double mn[3] = {DBL_MAX, DBL_MAX, DBL_MAX}, mx[3] = {-DBL_MAX, -DBL_MAX, -DBL_MAX};
+            if (ms[i]->nv == 0) continue;
+            mesh_bbox(ms[i], mn, mx);
+            mesh_translate(ms[i], -(mn[0] + mx[0]) / 2, -(mn[1] + mx[1]) / 2);
+        }
+    }
+    return n;
 }

@@ -240,6 +240,132 @@ int export_stl_per_color(const model_t *m, const model_params *p, int chunk, int
     return n;
 }
 
+int export_objects_stl(const export_object *objs, int n, const char *path, char *err, size_t errlen)
+{
+    export_part *parts = NULL;
+    int np = 0, i, j, ok;
+    for (i = 0; i < n; i++) {
+        parts = (export_part *)realloc(parts, sizeof(export_part) * (size_t)(np + objs[i].n));
+        for (j = 0; j < objs[i].n; j++) {
+            parts[np] = objs[i].parts[j];
+            parts[np].tx += objs[i].tx;
+            parts[np].ty += objs[i].ty;
+            np++;
+        }
+    }
+    if (np == 0) {
+        free(parts);
+        if (err && errlen) snprintf(err, errlen, "nothing to export");
+        return 0;
+    }
+    ok = write_stl_file(path, parts, np, err, errlen);
+    free(parts);
+    return ok;
+}
+
+static int write_objects(const export_object *objs, int n, int kind, const char *path, char *err, size_t errlen)
+{
+    if (kind == 2) return export_objects_3mf(objs, n, path, err, errlen);
+    return export_objects_stl(objs, n, path, err, errlen);
+}
+
+/* Bounding box of a mesh in XY. */
+static void mesh_xy_bbox(const mesh_t *m, double *w, double *d)
+{
+    double mn[2] = {1e300, 1e300}, mx[2] = {-1e300, -1e300};
+    int i;
+    for (i = 0; i < m->nv; i++) {
+        if (m->v[3 * i] < mn[0]) mn[0] = m->v[3 * i];
+        if (m->v[3 * i] > mx[0]) mx[0] = m->v[3 * i];
+        if (m->v[3 * i + 1] < mn[1]) mn[1] = m->v[3 * i + 1];
+        if (m->v[3 * i + 1] > mx[1]) mx[1] = m->v[3 * i + 1];
+    }
+    *w = m->nv ? mx[0] - mn[0] : 0;
+    *d = m->nv ? mx[1] - mn[1] : 0;
+}
+
+int export_collect_keys(const model_t *m, const model_params *p, double x0, double y0, mesh_t **meshes, export_object **objs)
+{
+    int i, cols;
+    double x = x0, y = y0, rowd = 0;
+    *meshes = NULL;
+    *objs = NULL;
+    if (!m->meshes_valid || m->nkeys == 0) return 0;
+    *objs = (export_object *)calloc((size_t)m->nkeys, sizeof(export_object));
+    *meshes = (mesh_t *)calloc((size_t)m->nkeys, sizeof(mesh_t));
+    cols = (int)ceil(sqrt((double)m->nkeys));
+    if (cols < 1) cols = 1;
+    for (i = 0; i < m->nkeys; i++) {
+        export_object *o = &(*objs)[i];
+        double w, d;
+        model_key_mesh(m, p, i, &(*meshes)[i]);
+        mesh_xy_bbox(&(*meshes)[i], &w, &d);
+        if (i > 0 && i % cols == 0) { x = x0; y -= rowd + 4; rowd = 0; }
+        o->parts[0].src = &(*meshes)[i];
+        mesh_init(&o->parts[0].rotated);
+        o->parts[0].rgb = model_base_rgb(m, p);
+        o->parts[0].tx = o->parts[0].ty = 0;
+        snprintf(o->parts[0].name, sizeof(o->parts[0].name), "key%02d_%06x", i + 1, o->parts[0].rgb);
+        snprintf(o->name, sizeof(o->name), "key%02d_%s_%s", i + 1, m->chunks[m->keys[i].a].name, m->chunks[m->keys[i].b].name);
+        o->n = 1;
+        o->tx = x + w / 2;
+        o->ty = y - d / 2;
+        x += w + 4;
+        if (d > rowd) rowd = d;
+    }
+    return m->nkeys;
+}
+
+int export_keys(const model_t *m, const model_params *p, int kind, const char *path, char *err, size_t errlen)
+{
+    export_object *objs;
+    mesh_t *meshes;
+    int i, ok, n;
+    if (err && errlen) err[0] = 0;
+    n = export_collect_keys(m, p, 0, 0, &meshes, &objs);
+    if (n == 0) {
+        if (err && errlen) snprintf(err, errlen, "no keys to export");
+        return 0;
+    }
+    ok = write_objects(objs, n, kind, path, err, errlen);
+    for (i = 0; i < n; i++) mesh_free(&meshes[i]);
+    free(meshes);
+    free(objs);
+    return ok;
+}
+
+int export_coupon(const model_t *m, const model_params *p, int kind, const char *path, char *err, size_t errlen)
+{
+    export_object objs[3];
+    mesh_t meshes[3];
+    static const char *names[3] = {"joint_test_socket_side", "joint_test_tab_side", "joint_test_key"};
+    double gap, w[3] = {0, 0, 0}, d[3] = {0, 0, 0};
+    int n, i, ok;
+    if (err && errlen) err[0] = 0;
+    n = model_build_coupon(p, &meshes[0], &meshes[1], &meshes[2], &gap);
+    if (n == 0) {
+        if (err && errlen) snprintf(err, errlen, "no joints to test: switch on connected plates first");
+        return 0;
+    }
+    memset(objs, 0, sizeof(objs));
+    for (i = 0; i < n; i++) {
+        mesh_xy_bbox(&meshes[i], &w[i], &d[i]);
+        objs[i].parts[0].src = &meshes[i];
+        mesh_init(&objs[i].parts[0].rotated);
+        objs[i].parts[0].rgb = m && m->valid ? model_base_rgb(m, p) : p->base_rgb;
+        snprintf(objs[i].parts[0].name, sizeof(objs[i].parts[0].name), "%s_%06x", names[i], objs[i].parts[0].rgb);
+        snprintf(objs[i].name, sizeof(objs[i].name), "%s", names[i]);
+        objs[i].n = 1;
+    }
+    /* the two plates side by side, the key in front of them */
+    objs[0].tx = -(w[0] / 2 + gap / 2);
+    objs[1].tx = w[1] / 2 + gap / 2;
+    if (n > 2) objs[2].ty = -(d[0] / 2 + gap + d[2] / 2);
+    ok = write_objects(objs, n, kind, path, err, errlen);
+    for (i = 0; i < 3; i++) mesh_free(&meshes[i]);
+    return ok;
+}
+
 static int export_one(const model_t *m, const model_params *p, int kind, int chunk, int plate, const char *path, char *err, size_t errlen)
 {
     if (kind == 2) return export_3mf(m, p, chunk, plate, path, err, errlen);
@@ -247,7 +373,29 @@ static int export_one(const model_t *m, const model_params *p, int kind, int chu
     return export_stl(m, p, chunk, plate, path, err, errlen);
 }
 
+/* The keys of a split model go in a file of their own next to the pieces. */
+static int export_keys_file(const model_t *m, const model_params *p, int kind, const char *path, char *err, size_t errlen)
+{
+    char prefix[1024], fn[1200];
+    if (m->nkeys == 0) return 0;
+    strip_ext(prefix, sizeof(prefix), path, kind == 2 ? ".3mf" : ".stl");
+    snprintf(fn, sizeof(fn), "%s_keys%s", prefix, kind == 2 ? ".3mf" : ".stl");
+    return export_keys(m, p, kind, fn, err, errlen) ? 1 : -1;
+}
+
+static int export_model_pieces(const model_t *m, const model_params *p, int kind, int mode, const char *path, char *err, size_t errlen);
+
 int export_model(const model_t *m, const model_params *p, int kind, int mode, const char *path, char *err, size_t errlen)
+{
+    int files = export_model_pieces(m, p, kind, mode, path, err, errlen), k;
+    if (!files) return 0;
+    if (kind == 2 && mode == 0) return files;     /* the keys are objects in the one 3MF */
+    k = export_keys_file(m, p, kind, path, err, errlen);
+    if (k < 0) return 0;
+    return files + k;
+}
+
+static int export_model_pieces(const model_t *m, const model_params *p, int kind, int mode, const char *path, char *err, size_t errlen)
 {
     const char *ext = kind == 2 ? ".3mf" : ".stl";
     if (err && errlen) err[0] = 0;

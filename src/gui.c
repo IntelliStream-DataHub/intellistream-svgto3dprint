@@ -48,7 +48,7 @@ typedef struct {
     /* async dialog results */
     SDL_Mutex *lock;
     char dialog_path[1024];
-    int dialog_kind;        /* 0 none, 1 open, 2 stl, 3 stl per colour, 4 3mf, -1 error */
+    int dialog_kind;        /* 0 none, 1 open, 2 stl, 3 stl per colour, 4 3mf, 5 font, -1 error */
     char dialog_err[256];
     /* text fields */
     char path_buf[1024];
@@ -68,6 +68,7 @@ typedef struct {
     int tab_first;          /* first piece number shown in the tab strip */
     int last_view_tab, last_view_sel;
     float grid_zoom;
+    float grid_pan[2];      /* pieces grid: drag offset shared by every cell (window units) */
     int last_nchunks;
     int tab_h;              /* window units, 0 when no tab bar */
     Uint64 last_click_ms;
@@ -115,12 +116,13 @@ static void load_file(gui_t *g, const char *path)
     g->same_height = 1.0f;
     g->stagger_first = 0.6f;
     g->stagger_step = 0.2f;
-    g->export_mode = 1;
+    g->export_mode = 0;
     g->measure_mode = 0;
     g->nmeasure = 0;
     g->tab = 0;
     g->sel_piece = -1;
     g->grid_zoom = 1.0f;
+    g->grid_pan[0] = g->grid_pan[1] = 0;
     g->export_buf[0] = 0;
     if (app_load_svg(g->app, path)) {
         char title[1200];
@@ -373,7 +375,9 @@ static void grid_camera(const gui_t *g, int i, int cw, int ch, camera_t *cam)
     camera_fit_bbox(cam, mn, mx);
     /* fit uses the bounding sphere; tighten for wide cells */
     cam->dist *= 0.85f / (g->grid_zoom > 0.05f ? g->grid_zoom : 0.05f);
-    (void)cw; (void)ch;
+    /* the same drag offset in every cell, in cell pixels */
+    if (g->grid_pan[0] != 0 || g->grid_pan[1] != 0) camera_pan(cam, g->grid_pan[0], g->grid_pan[1], ch);
+    (void)cw;
 }
 
 /* ---- overlay drawing helpers ------------------------------------------ */
@@ -657,7 +661,7 @@ static void draw_overlay(gui_t *g, const overlay_t *o)
         } else if (SDL_GetTicks() < g->status_until && g->status[0]) {
             ov_label(o, x, y, g->status, fg, nk_rgba(0, 0, 0, 120), 0);
         } else {
-            ov_label(o, x, y, "Left drag: orbit   Right/middle drag: pan   Wheel: zoom   F: fit   1/3/7: front/right/top   Drop an SVG to load",
+            ov_label(o, x, y, "Left drag: orbit   Right/middle drag: pan   Wheel: zoom   F: fit   1/3/7/9: front/right/top/bottom   Drop an SVG to load",
                      nk_rgba(235, 235, 240, 200), nk_rgba(0, 0, 0, 90), 0);
         }
         if (!m->meshes_valid) {
@@ -898,11 +902,11 @@ static void panel(gui_t *g, int x, int y, int w, int h)
             nk_label(ctx, "3MF: one object, a part per colour (multi-colour printing).", NK_TEXT_LEFT);
             nk_label(ctx, "STL: one merged file, single colour (use 3MF for multi-colour).", NK_TEXT_LEFT);
             if (m->nchunks > 1) {
-                static const char *modes[] = {"One file per piece", "One file per printer plate (pieces arranged)", "All pieces in one file"};
-                int sel = g->export_mode == 1 ? 0 : (g->export_mode == 2 ? 1 : 2);
+                static const char *modes[] = {"All pieces in one file (Arrange in the slicer)", "One file per piece", "One file per printer plate (pieces arranged)"};
+                int sel = g->export_mode == 0 ? 0 : (g->export_mode == 1 ? 1 : 2);
                 nk_layout_row_dynamic(ctx, 26 * ui, 1);
                 sel = nk_combo(ctx, modes, 3, sel, 24 * ui, nk_vec2(nk_widget_width(ctx), 110 * ui));
-                g->export_mode = sel == 0 ? 1 : (sel == 1 ? 2 : 0);
+                g->export_mode = sel == 0 ? 0 : (sel == 1 ? 1 : 2);
             }
             if (g->dialogs_failed) {
                 nk_layout_row_begin(ctx, NK_DYNAMIC, 26 * ui, 3);
@@ -1091,15 +1095,38 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 }
                 (void)items; (void)names; (void)n; (void)sel;
                 if (p->base_enabled && p->base_thickness > 0) {
-                    nk_bool jb = p->chunk_joints != 0;
+                    static const char *styles[] = {"Separate plates, no joints", "Connected: jigsaw dovetails (drop in)", "Connected: jigsaw + sliding keys (lock)"};
+                    int style = p->chunk_joints < 0 || p->chunk_joints > 2 ? 1 : p->chunk_joints;
                     float cl = (float)p->joint_clearance;
-                    nk_layout_row_dynamic(ctx, 22 * ui, 1);
-                    nk_checkbox_label(ctx, "Connected plates: one strip per row, dovetail joints", &jb);
-                    p->chunk_joints = jb ? 1 : 0;
+                    nk_layout_row_dynamic(ctx, 26 * ui, 1);
+                    style = nk_combo(ctx, styles, 3, style, (int)(24 * ui), nk_vec2(nk_widget_width(ctx), 110 * ui));
+                    if (style != p->chunk_joints) {
+                        p->chunk_joints = style;
+                        if (style == JOINTS_KEYS && p->base_thickness < KEY_MIN_PLATE) {
+                            p->base_thickness = KEY_MIN_PLATE;
+                            set_status(g, "Base plate set to %.0f mm: the key slots need the room", KEY_MIN_PLATE);
+                        }
+                    }
                     if (p->chunk_joints) {
                         nk_layout_row_dynamic(ctx, 24 * ui, 1);
                         nk_property_float(ctx, "#Joint clearance (mm)", 0, &cl, 1, 0.05f, 0.005f);
                         p->joint_clearance = cl;
+                    }
+                    if (p->chunk_joints == JOINTS_KEYS) {
+                        nk_layout_row_dynamic(ctx, 22 * ui, 1);
+                        if (m->keys_too_thin) {
+                            snprintf(buf, sizeof(buf), "No keys: the base plate is thinner than %.0f mm", KEY_MIN_PLATE);
+                            nk_label_colored(ctx, buf, NK_TEXT_LEFT, nk_rgb(255, 110, 90));
+                        } else if (m->meshes_valid && m->nkeys > 0) {
+                            double kw, kh;
+                            model_key_size(p, &kw, &kh);
+                            snprintf(buf, sizeof(buf), "%d keys (%.0f x %.1f x %.1f mm), exported to a _keys file", m->nkeys, m->keys[0].len, kw, kh);
+                            nk_label(ctx, buf, NK_TEXT_LEFT);
+                            nk_label(ctx, "Drop the pieces together, then push each key across", NK_TEXT_LEFT);
+                            nk_label(ctx, "the seam from below; push it back to take them apart.", NK_TEXT_LEFT);
+                        } else if (m->meshes_valid && m->nchunks > 1) {
+                            nk_label_colored(ctx, "No seam has room for a key (pieces too narrow)", NK_TEXT_LEFT, nk_rgb(255, 200, 90));
+                        }
                     }
                 }
                 nk_layout_row_dynamic(ctx, 22 * ui, 1);
@@ -1167,10 +1194,14 @@ static void panel(gui_t *g, int x, int y, int w, int h)
         /* --- view --- */
         if (nk_tree_push(ctx, NK_TREE_TAB, "View", NK_MAXIMIZED)) {
             nk_bool b;
-            nk_layout_row_dynamic(ctx, 26 * ui, 5);
-            if (nk_button_label(ctx, "Fit")) camera_fit(&g->cam, m);
+            nk_layout_row_dynamic(ctx, 26 * ui, 6);
+            if (nk_button_label(ctx, "Fit")) {
+                if (g->tab == 1) { g->grid_zoom = 1.0f; g->grid_pan[0] = g->grid_pan[1] = 0; }
+                else camera_fit(&g->cam, m);
+            }
             if (nk_button_label(ctx, "Iso")) camera_preset(&g->cam, 0);
             if (nk_button_label(ctx, "Top")) camera_preset(&g->cam, 1);
+            if (nk_button_label(ctx, "Bottom")) camera_preset(&g->cam, 6);
             if (nk_button_label(ctx, "Front")) camera_preset(&g->cam, 2);
             if (nk_button_label(ctx, "Right")) camera_preset(&g->cam, 3);
             nk_layout_row_dynamic(ctx, 22 * ui, 2);
@@ -1303,7 +1334,8 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
         if (g->drag_button) {
             float dx = e->motion.x - g->last_mx, dy = e->motion.y - g->last_my;
             if (g->drag_button == 1) camera_orbit(&g->cam, dx, dy);
-            else if (g->tab == 0) camera_pan(&g->cam, dx, dy, vh);
+            else if (g->tab == 1) { g->grid_pan[0] += dx; g->grid_pan[1] += dy; }
+            else camera_pan(&g->cam, dx, dy, vh);
             g->last_mx = e->motion.x;
             g->last_my = e->motion.y;
         } else if (g->tab == 0 && in_viewport(g, e->motion.x, e->motion.y - g->tab_h, vw, vh)) {
@@ -1332,10 +1364,14 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
     case SDL_EVENT_KEY_DOWN:
         if (text_active) break;
         switch (e->key.key) {
-        case SDLK_F: camera_fit(&g->cam, &g->app->model); break;
+        case SDLK_F:
+            if (g->tab == 1) { g->grid_zoom = 1.0f; g->grid_pan[0] = g->grid_pan[1] = 0; }
+            else camera_fit(&g->cam, &g->app->model);
+            break;
         case SDLK_1: camera_preset(&g->cam, 2); break;
         case SDLK_3: camera_preset(&g->cam, 3); break;
         case SDLK_7: camera_preset(&g->cam, 1); break;
+        case SDLK_9: camera_preset(&g->cam, 6); break;
         case SDLK_0: camera_preset(&g->cam, 0); break;
         case SDLK_P: g->cam.ortho = !g->cam.ortho; break;
         case SDLK_M: g->measure_mode = !g->measure_mode; g->nmeasure = 0; break;
@@ -1401,15 +1437,97 @@ static void load_fonts(gui_t *g)
         font->handle.height = size;   /* draw the oversized atlas at its window-unit size */
         nk_style_set_font(g->ctx, &font->handle);
     }
-    /* clearer check boxes: dark box, bright mark when checked */
+    /* One look for every input: drop-downs, number fields, text fields and
+     * check boxes share a dark field colour, a thin border and the same
+     * rounding, so the panel reads as one form.  Buttons stay lighter. */
     {
         struct nk_style *s = &g->ctx->style;
-        s->checkbox.normal = nk_style_item_color(nk_rgb(48, 48, 54));
-        s->checkbox.hover = nk_style_item_color(nk_rgb(64, 64, 72));
-        s->checkbox.active = nk_style_item_color(nk_rgb(64, 64, 72));
+        const struct nk_color field = nk_rgb(34, 34, 38), field_hover = nk_rgb(44, 44, 50), field_active = nk_rgb(52, 52, 60);
+        const struct nk_color border = nk_rgb(88, 88, 98), text = nk_rgb(215, 215, 220), symbol = nk_rgb(190, 190, 198);
+        const struct nk_color accent = nk_rgb(96, 176, 255), editing = nk_rgb(70, 74, 88), selection = nk_rgb(60, 110, 170);
+        const struct nk_color button = nk_rgb(52, 86, 128), button_hover = nk_rgb(66, 106, 154), button_active = nk_rgb(40, 68, 102);
+        const float rounding = 4 * g->ui;
+        /* drop-downs */
+        s->combo.normal = nk_style_item_color(field);
+        s->combo.hover = nk_style_item_color(field_hover);
+        s->combo.active = nk_style_item_color(field_active);
+        s->combo.border_color = border;
+        s->combo.border = 1.0f;
+        s->combo.rounding = rounding;
+        s->combo.label_normal = s->combo.label_hover = s->combo.label_active = text;
+        s->combo.symbol_normal = s->combo.symbol_hover = s->combo.symbol_active = symbol;
+        s->combo.button.normal = nk_style_item_color(field);
+        s->combo.button.hover = nk_style_item_color(field_hover);
+        s->combo.button.active = nk_style_item_color(field_active);
+        s->combo.button.border_color = field;
+        s->combo.button.text_background = field;
+        s->combo.button.text_normal = s->combo.button.text_hover = s->combo.button.text_active = symbol;
+        s->window.combo_border_color = border;
+        s->window.combo_border = 1.0f;
+        /* number fields (label, value and the two arrow buttons in one field) */
+        s->property.normal = nk_style_item_color(field);
+        s->property.hover = nk_style_item_color(field_hover);
+        s->property.active = nk_style_item_color(field_active);
+        s->property.border_color = border;
+        s->property.border = 1.0f;
+        s->property.rounding = rounding;
+        s->property.label_normal = s->property.label_hover = s->property.label_active = text;
+        /* the value box: Nuklear draws it at rest too, so it gets a subtle
+         * lighter box with a muted frame, and the bright editing box and the
+         * blue cursor once it is being typed in */
+        s->property.edit.normal = nk_style_item_color(nk_rgb(44, 46, 54));
+        s->property.edit.hover = nk_style_item_color(nk_rgb(50, 52, 62));
+        s->property.edit.active = nk_style_item_color(editing);
+        s->property.edit.border_color = nk_rgb(96, 108, 130);
+        s->property.edit.border = 1.0f;
+        s->property.edit.rounding = rounding;
+        s->property.edit.text_normal = s->property.edit.text_hover = s->property.edit.text_active = nk_rgb(245, 245, 250);
+        s->property.edit.cursor_normal = s->property.edit.cursor_hover = accent;
+        s->property.edit.cursor_text_normal = s->property.edit.cursor_text_hover = nk_rgb(20, 20, 24);
+        s->property.edit.selected_normal = s->property.edit.selected_hover = selection;
+        s->property.edit.selected_text_normal = s->property.edit.selected_text_hover = nk_rgb(245, 245, 250);
+        s->property.edit.cursor_size = 2 * g->ui;
+        /* the box is sized from the value's text plus the property padding: give it more air */
+        s->property.padding = nk_vec2(9 * g->ui, 4 * g->ui);
+        s->property.edit.padding = nk_vec2(5 * g->ui, 0);
+        s->property.inc_button.normal = s->property.dec_button.normal = nk_style_item_color(field);
+        s->property.inc_button.hover = s->property.dec_button.hover = nk_style_item_color(field_hover);
+        s->property.inc_button.active = s->property.dec_button.active = nk_style_item_color(field_active);
+        s->property.inc_button.border_color = s->property.dec_button.border_color = field;
+        s->property.inc_button.text_background = s->property.dec_button.text_background = field;
+        s->property.inc_button.text_normal = s->property.dec_button.text_normal = symbol;
+        s->property.inc_button.text_hover = s->property.dec_button.text_hover = text;
+        s->property.inc_button.text_active = s->property.dec_button.text_active = text;
+        /* text fields: a field at rest, the lighter editing box once they have the focus */
+        s->edit.normal = nk_style_item_color(field);
+        s->edit.hover = nk_style_item_color(field_hover);
+        s->edit.active = nk_style_item_color(editing);
+        s->edit.border_color = border;
+        s->edit.border = 1.0f;
+        s->edit.rounding = rounding;
+        s->edit.text_normal = s->edit.text_hover = text;
+        s->edit.text_active = nk_rgb(245, 245, 250);
+        s->edit.cursor_normal = s->edit.cursor_hover = accent;
+        s->edit.cursor_text_normal = s->edit.cursor_text_hover = nk_rgb(20, 20, 24);
+        s->edit.selected_normal = s->edit.selected_hover = selection;
+        s->edit.selected_text_normal = s->edit.selected_text_hover = nk_rgb(245, 245, 250);
+        s->edit.cursor_size = 2 * g->ui;
+        /* buttons: the accent blue, so actions stand apart from the dark fields */
+        s->button.normal = nk_style_item_color(button);
+        s->button.hover = nk_style_item_color(button_hover);
+        s->button.active = nk_style_item_color(button_active);
+        s->button.border_color = nk_rgb(78, 116, 162);
+        s->button.border = 1.0f;
+        s->button.rounding = rounding;
+        s->button.text_background = button;
+        s->button.text_normal = s->button.text_hover = s->button.text_active = nk_rgb(240, 244, 250);
+        /* check boxes: dark box, bright mark when checked */
+        s->checkbox.normal = nk_style_item_color(field);
+        s->checkbox.hover = nk_style_item_color(field_hover);
+        s->checkbox.active = nk_style_item_color(field_active);
         s->checkbox.cursor_normal = nk_style_item_color(nk_rgb(96, 176, 255));
         s->checkbox.cursor_hover = nk_style_item_color(nk_rgb(130, 196, 255));
-        s->checkbox.border_color = nk_rgb(130, 130, 140);
+        s->checkbox.border_color = border;
         s->checkbox.border = 1.0f;
         s->checkbox.padding = nk_vec2(3 * g->ui, 3 * g->ui);
         s->option.normal = s->checkbox.normal;
@@ -1465,11 +1583,12 @@ int gui_main(app_state *a)
     g.last_view_tab = -1;
     g.last_view_sel = -1;
     g.grid_zoom = 1.0f;
+    g.grid_pan[0] = g.grid_pan[1] = 0;
     g.last_nchunks = 1;
     g.same_height = 1.0f;
     g.stagger_first = 0.6f;
     g.stagger_step = 0.2f;
-    g.export_mode = 1;
+    g.export_mode = 0;
     g.show_dims = 1;
     g.show_triad = 1;
     g.view.show_grid = 1;
@@ -1626,6 +1745,12 @@ int gui_main(app_state *a)
             if (nk_begin(g.ctx, "Tabs", r, NK_WINDOW_NO_SCROLLBAR)) {
                 struct nk_style_button active = g.ctx->style.button, normal = g.ctx->style.button;
                 int n = a->model.nchunks, i;
+                normal.normal = nk_style_item_color(nk_rgb(50, 50, 54));
+                normal.hover = nk_style_item_color(nk_rgb(62, 62, 68));
+                normal.active = nk_style_item_color(nk_rgb(70, 70, 78));
+                normal.border_color = nk_rgb(88, 88, 98);
+                normal.text_background = nk_rgb(50, 50, 54);
+                normal.text_normal = normal.text_hover = normal.text_active = nk_rgb(215, 215, 220);
                 float wide = 110 * g.ui, num = 34 * g.ui, arrow = 26 * g.ui, sp = g.ctx->style.window.spacing.x;
                 int fit = (int)((vw - 2 * wide - 2 * arrow - 8 * sp - 12 * g.ui) / (num + sp));
                 int need_arrows;
