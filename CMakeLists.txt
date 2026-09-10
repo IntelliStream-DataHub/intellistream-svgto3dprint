@@ -193,9 +193,28 @@ if(NOT MSVC)
   target_link_libraries(test_ui PRIVATE m)
 endif()
 
+add_executable(test_plates tests/test_plates.c
+  src/xml.c src/svg.c src/region.c src/model.c src/app.c src/textfont.c)
+target_include_directories(test_plates PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libtess2
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
+target_link_libraries(test_plates PRIVATE tess2)
+target_compile_options(test_plates PRIVATE ${LOGO3D_FP_FLAGS})
+target_compile_definitions(test_plates PRIVATE
+  EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples"
+  FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+if(NOT MSVC)
+  target_compile_options(test_plates PRIVATE -Wall -Wextra -Wno-unused-parameter)
+  set_source_files_properties(src/textfont.c PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
+  target_compile_definitions(test_plates PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+  target_link_libraries(test_plates PRIVATE m)
+endif()
+
 enable_testing()
 add_test(NAME region_unit COMMAND test_region)
 add_test(NAME ui_unit COMMAND test_ui)
+add_test(NAME plates_layout COMMAND test_plates ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME headless_exports
   COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_tests.sh $<TARGET_FILE:intellistream-svgto3dprint>
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

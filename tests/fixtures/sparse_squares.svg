@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220">
+  <!-- Two small squares in opposite corners of a large bbox -->
+  <rect fill="#105984" x="8" y="8" width="50" height="50"/>
+  <rect fill="#005984" x="340" y="160" width="50" height="50"/>
+</svg>

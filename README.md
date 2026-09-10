@@ -88,9 +88,11 @@ which is what `tests/compare_info.py` checks.
   shrunk, tiled or flagged, per the *Oversize* setting. A *Pieces* tab shows
   every piece on its own plate (orbit/pan/zoom, double-click to open).
   With a base plate, *Connected plates* joins each row into one strip with
-  jigsaw dovetail tabs; add *sliding dovetail keys* to also lock pieces
-  together vertically — a separate printed bar slides into an underside slot
-  across each seam after assembly, and slides back out to separate them.
+  jigsaw dovetail tabs; the logo on top is cut to the same outline (tabs
+  carry the artwork, sockets cut it away). Add *sliding dovetail keys* to
+  also lock pieces together vertically — a separate printed bar slides into
+  an underside slot across each seam after assembly, and slides back out to
+  separate them.
   Keys need a base at least 3 mm thick and are exported alongside the pieces.
   `--export-test` writes a small two-plate coupon to dial in the clearance
   before committing to a full print.
@@ -105,8 +107,9 @@ which is what `tests/compare_info.py` checks.
   outlines, and a two-point measuring tool.
 
 Mouse: left drag orbits, right/middle drag pans, wheel zooms, `F` fits.
-`P` toggles perspective, `M` the measure tool, `Ctrl+O` opens, `Ctrl+E`
-exports 3MF.
+`P` toggles perspective, `M` the measure tool, `Ctrl+O` / `Cmd+O` opens,
+`Ctrl+E` / `Cmd+E` exports 3MF. Side-panel edits undo with `Ctrl+Z` /
+`Cmd+Z` and redo with `Ctrl+Shift+Z` / `Ctrl+Y` / `Cmd+Shift+Z`.
 
 Colours are quantised to at most 8 materials (base plate included), and
 painter's order is respected: a shape drawn on top cuts a hole in whatever

@@ -2,6 +2,7 @@
  * window: input is fed by hand and the widgets are laid out in a frame.
  * Exit status is non-zero when a check fails. */
 #include "nk_config.h"
+#include "panel_undo.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -72,9 +73,105 @@ static void test_color_picker_drag(void)
     nk_free(&ctx);
 }
 
+static void st(panel_undo_state *s, int n)
+{
+    memset(s, 0, sizeof *s);
+    s->params.width_mm = (double)n;
+    s->bed_w = (float)n;
+}
+
+static void test_panel_undo_hotkey(void)
+{
+    CHECK(panel_undo_hotkey(1, 0, 0, 'z') == 1);
+    CHECK(panel_undo_hotkey(1, 1, 0, 'z') == 2);
+    CHECK(panel_undo_hotkey(1, 0, 0, 'y') == 2);
+    CHECK(panel_undo_hotkey(0, 0, 0, 'z') == 0);
+    CHECK(panel_undo_hotkey(1, 0, 1, 'z') == 0);
+    CHECK(panel_undo_hotkey(1, 1, 0, 'y') == 0);
+    CHECK(panel_undo_hotkey(1, 0, 0, 'x') == 0);
+}
+
+static void test_panel_undo_stack(void)
+{
+    panel_undo u;
+    panel_undo_state a;
+    const panel_undo_state *s;
+    panel_undo_reset(&u, NULL);
+    CHECK(!panel_undo_can_undo(&u) && !panel_undo_can_redo(&u));
+
+    st(&a, 10); panel_undo_record(&u, &a, 0);
+    CHECK(u.n == 1 && u.cur == 0);
+    CHECK(!panel_undo_can_undo(&u));
+
+    st(&a, 20); panel_undo_record(&u, &a, 0);
+    st(&a, 30); panel_undo_record(&u, &a, 0);
+    CHECK(u.n == 3 && u.cur == 2);
+    CHECK(panel_undo_can_undo(&u) && !panel_undo_can_redo(&u));
+
+    s = panel_undo_undo(&u);
+    CHECK(s && s->params.width_mm == 20 && s->bed_w == 20);
+    s = panel_undo_undo(&u);
+    CHECK(s && s->params.width_mm == 10);
+    CHECK(!panel_undo_can_undo(&u) && panel_undo_can_redo(&u));
+    CHECK(panel_undo_undo(&u) == NULL);
+
+    s = panel_undo_redo(&u);
+    CHECK(s && s->params.width_mm == 20);
+    s = panel_undo_redo(&u);
+    CHECK(s && s->params.width_mm == 30);
+    CHECK(panel_undo_redo(&u) == NULL);
+
+    /* a new edit after undo drops the redo branch */
+    panel_undo_undo(&u);
+    st(&a, 99); panel_undo_record(&u, &a, 0);
+    CHECK(u.n == 3 && u.cur == 2);
+    CHECK(u.hist[2].params.width_mm == 99);
+    CHECK(!panel_undo_can_redo(&u));
+}
+
+static void test_panel_undo_coalesce(void)
+{
+    panel_undo u;
+    panel_undo_state a;
+    const panel_undo_state *s;
+    st(&a, 1); panel_undo_reset(&u, &a);
+    st(&a, 2); panel_undo_record(&u, &a, 1);   /* start a drag */
+    st(&a, 3); panel_undo_record(&u, &a, 1);
+    st(&a, 4); panel_undo_record(&u, &a, 1);
+    CHECK(u.n == 2 && u.cur == 1);
+    CHECK(u.hist[0].params.width_mm == 1);
+    CHECK(u.hist[1].params.width_mm == 4);
+    s = panel_undo_undo(&u);
+    CHECK(s && s->params.width_mm == 1);
+
+    /* a click (no coalesce) is its own step */
+    st(&a, 5); panel_undo_record(&u, &a, 0);
+    st(&a, 6); panel_undo_record(&u, &a, 0);
+    CHECK(u.n == 3 && u.cur == 2);
+    s = panel_undo_undo(&u);
+    CHECK(s && s->params.width_mm == 5);
+}
+
+static void test_panel_undo_overflow(void)
+{
+    panel_undo u;
+    panel_undo_state a;
+    int i;
+    st(&a, 0); panel_undo_reset(&u, &a);
+    for (i = 1; i <= PANEL_UNDO_MAX + 5; i++) { st(&a, i); panel_undo_record(&u, &a, 0); }
+    CHECK(u.n == PANEL_UNDO_MAX);
+    CHECK(u.cur == PANEL_UNDO_MAX - 1);
+    CHECK(u.hist[0].params.width_mm == (double)(5 + 1)); /* oldest dropped */
+    CHECK(u.hist[u.cur].params.width_mm == (double)(PANEL_UNDO_MAX + 5));
+}
+
 int main(void)
 {
     test_color_picker_drag();
+    test_panel_undo_hotkey();
+    test_panel_undo_stack();
+    test_panel_undo_coalesce();
+    test_panel_undo_overflow();
     printf("test_ui: %d checks, %d failed\n", ncheck, nfail);
     return nfail ? 1 : 0;
 }

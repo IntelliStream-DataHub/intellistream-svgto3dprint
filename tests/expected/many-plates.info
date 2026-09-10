@@ -18,10 +18,10 @@ plates: 12 (printer plate 60 x 60 mm, 5 mm between pieces)
   chunk10: 41.2 x 43.4 mm,  plate 10 at 22.6,23.7
   chunk11: 44.2 x 35.3 mm,  plate 11 at 24.1,19.7
   chunk12: 44.2 x 44.2 mm,  plate 12 at 24.1,24.1
-slot 1: #808080  shapes 3  area 3136.3 mm^2  z 2.00-4.00 mm  volume 25090.7 mm^3  (body)
-slot 2: #0000FF  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
-slot 3: #00FF00  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
-slot 4: #FF0000  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 418.2 mm^3
-slot 5: #000000  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3
-slot 6: #00FFFF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3
-slot 7: #FF00FF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 209.1 mm^3
+slot 1: #808080  shapes 3  area 3136.3 mm^2  z 2.00-4.00 mm  volume 24950.2 mm^3  (body)
+slot 2: #0000FF  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 415.6 mm^3
+slot 3: #00FF00  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 415.6 mm^3
+slot 4: #FF0000  shapes 2  area 2090.9 mm^2  z 4.00-4.20 mm  volume 415.5 mm^3
+slot 5: #000000  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 208.6 mm^3
+slot 6: #00FFFF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 206.9 mm^3
+slot 7: #FF00FF  shapes 1  area 1045.4 mm^2  z 4.00-4.20 mm  volume 208.7 mm^3

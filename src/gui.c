@@ -5,6 +5,7 @@
 #include "glapi.h"
 #include "nk_sdl_gl3.h"
 #include "icon_data.h"
+#include "panel_undo.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -73,6 +74,9 @@ typedef struct {
     int tab_h;              /* window units, 0 when no tab bar */
     Uint64 last_click_ms;
     int last_click_piece;
+    /* right-panel undo */
+    panel_undo undo;
+    int undo_cmd;           /* 0 none, 1 undo, 2 redo */
 } gui_t;
 
 #define GRID_GAP 6
@@ -139,6 +143,7 @@ static void load_file(gui_t *g, const char *path)
     } else {
         set_status(g, "Error: %s", g->app->last_error);
     }
+    panel_undo_reset(&g->undo, NULL);
 }
 
 static void do_export(gui_t *g, int kind, const char *path)
@@ -1285,6 +1290,111 @@ static int text_field_active(gui_t *g)
     return w && (w->edit.active || w->property.active);
 }
 
+/* Command on macOS, Control on Windows and Linux. */
+static int key_primary_mod(SDL_Keymod m)
+{
+#ifdef __APPLE__
+    return (m & SDL_KMOD_GUI) != 0 && (m & SDL_KMOD_CTRL) == 0 && (m & SDL_KMOD_ALT) == 0;
+#else
+    return (m & SDL_KMOD_CTRL) != 0 && (m & SDL_KMOD_GUI) == 0 && (m & SDL_KMOD_ALT) == 0;
+#endif
+}
+
+static int event_undo_cmd(const SDL_Event *e)
+{
+    int key;
+    if (e->type != SDL_EVENT_KEY_DOWN && e->type != SDL_EVENT_KEY_UP) return 0;
+    if (e->key.key == SDLK_Z) key = 'z';
+    else if (e->key.key == SDLK_Y) key = 'y';
+    else return 0;
+    return panel_undo_hotkey(key_primary_mod(e->key.mod),
+                             (e->key.mod & SDL_KMOD_SHIFT) != 0,
+                             (e->key.mod & SDL_KMOD_ALT) != 0, key);
+}
+
+static void panel_unfocus(gui_t *g)
+{
+    struct nk_window *w = nk_window_find(g->ctx, "Panel");
+    if (w) {
+        w->edit.active = 0;
+        w->property.active = 0;
+    }
+}
+
+static void panel_capture(const gui_t *g, panel_undo_state *s)
+{
+    memset(s, 0, sizeof(*s));
+    s->params = g->app->params;
+    /* derived every frame from the tabs / plate size, not a user edit */
+    s->params.chunk_view = 0;
+    s->params.chunk_max_w = 0;
+    s->params.chunk_max_d = 0;
+    s->params.export_color_objects = 0;
+    s->bed_w = g->view.bed_w;
+    s->bed_d = g->view.bed_d;
+    s->grid_step = g->view.grid_step;
+    s->show_bed = g->view.show_bed;
+    s->show_grid = g->view.show_grid;
+    s->show_bbox = g->view.show_bbox;
+    s->show_outline = g->view.show_outline;
+    s->show_dims = g->show_dims;
+    s->show_slot_dims = g->show_slot_dims;
+    s->show_triad = g->show_triad;
+    s->cam_ortho = g->cam.ortho;
+    s->export_mode = g->export_mode;
+    s->same_height = g->same_height;
+    s->stagger_first = g->stagger_first;
+    s->stagger_step = g->stagger_step;
+}
+
+static void panel_apply_state(gui_t *g, const panel_undo_state *s)
+{
+    int chunk_view = g->app->params.chunk_view;
+    int export_co = g->app->params.export_color_objects;
+    g->app->params = s->params;
+    g->app->params.chunk_view = chunk_view;
+    g->app->params.export_color_objects = export_co;
+    g->view.bed_w = s->bed_w;
+    g->view.bed_d = s->bed_d;
+    g->view.grid_step = s->grid_step;
+    g->view.show_bed = s->show_bed;
+    g->view.show_grid = s->show_grid;
+    g->view.show_bbox = s->show_bbox;
+    g->view.show_outline = s->show_outline;
+    g->show_dims = s->show_dims;
+    g->show_slot_dims = s->show_slot_dims;
+    g->show_triad = s->show_triad;
+    g->cam.ortho = s->cam_ortho;
+    g->export_mode = s->export_mode;
+    g->same_height = s->same_height;
+    g->stagger_first = s->stagger_first;
+    g->stagger_step = s->stagger_step;
+    g->app->params.chunk_max_w = g->view.bed_w - 4;
+    g->app->params.chunk_max_d = g->view.bed_d - 4;
+}
+
+static void panel_commit_undo(gui_t *g)
+{
+    panel_undo_state now;
+    const panel_undo_state *s = NULL;
+    panel_capture(g, &now);
+    if (g->undo_cmd == 1 && panel_undo_can_undo(&g->undo)) s = panel_undo_undo(&g->undo);
+    else if (g->undo_cmd == 2 && panel_undo_can_redo(&g->undo)) s = panel_undo_redo(&g->undo);
+    g->undo_cmd = 0;
+    if (s) {
+        panel_unfocus(g);
+        panel_apply_state(g, s);
+        g->dirty = 1;
+        g->dirty_since = 0;
+        schedule_rebuild(g);
+        return;
+    }
+    {
+        int down = g->ctx->input.mouse.buttons[NK_BUTTON_LEFT].down;
+        panel_undo_record(&g->undo, &now, down || text_field_active(g));
+    }
+}
+
 static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *running)
 {
     int text_active = text_field_active(g);
@@ -1361,7 +1471,9 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
         }
         break;
     }
-    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_DOWN: {
+        int ucmd = event_undo_cmd(e);
+        if (ucmd) { g->undo_cmd = ucmd; break; }
         if (text_active) break;
         switch (e->key.key) {
         case SDLK_F:
@@ -1376,11 +1488,12 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
         case SDLK_P: g->cam.ortho = !g->cam.ortho; break;
         case SDLK_M: g->measure_mode = !g->measure_mode; g->nmeasure = 0; break;
         case SDLK_ESCAPE: g->nmeasure = 0; g->measure_mode = 0; break;
-        case SDLK_O: if (e->key.mod & SDL_KMOD_CTRL) start_open_dialog(g); break;
-        case SDLK_E: if (e->key.mod & SDL_KMOD_CTRL) start_save_dialog(g, 4); break;
+        case SDLK_O: if (key_primary_mod(e->key.mod)) start_open_dialog(g); break;
+        case SDLK_E: if (key_primary_mod(e->key.mod)) start_save_dialog(g, 4); break;
         default: break;
         }
         break;
+    }
     default:
         break;
     }
@@ -1717,7 +1830,8 @@ int gui_main(app_state *a)
 
         nk_input_begin(g.ctx);
         while (SDL_PollEvent(&e)) {
-            nk_sdl_handle_event(&e);
+            /* keep document undo/redo out of Nuklear's text-edit undo */
+            if (!event_undo_cmd(&e)) nk_sdl_handle_event(&e);
             handle_event(&g, &e, vw, vh, &running);
         }
         nk_input_end(g.ctx);
@@ -1809,6 +1923,7 @@ int gui_main(app_state *a)
             g.ctx->style.window.padding = saved_pad;
         }
         panel(&g, vw, 0, ww - vw, wh);
+        panel_commit_undo(&g);
 
         /* render */
         glViewport(0, 0, pw, ph);

@@ -86,9 +86,19 @@ TEST_UI = $(BUILD)/test_ui
 $(TEST_UI): tests/test_ui.c src/nk_config.h $(NK_OBJ) | $(BUILD)
 	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/nuklear -o $@ tests/test_ui.c $(NK_OBJ) -lm
 
-test: $(TARGET) $(TEST_REGION) $(TEST_UI)
+# Plate-layout checks across shapes and sizes (no SDL).
+TEST_PLATES = $(BUILD)/test_plates
+PLATES_SRC = src/xml.c src/svg.c src/region.c src/model.c src/app.c src/textfont.c
+
+$(TEST_PLATES): tests/test_plates.c $(PLATES_SRC) src/app.h src/model.h $(TESS_OBJ) | $(BUILD)
+	$(CC) $(CSTD) $(CFLAGS) $(FPFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 -Ithird_party/stb \
+		-DEXAMPLES_DIR=\"$(CURDIR)/examples\" -DFIXTURES_DIR=\"$(CURDIR)/tests/fixtures\" \
+		-o $@ tests/test_plates.c $(PLATES_SRC) $(TESS_OBJ) -lm
+
+test: $(TARGET) $(TEST_REGION) $(TEST_UI) $(TEST_PLATES)
 	$(TEST_REGION)
 	$(TEST_UI)
+	$(TEST_PLATES)
 	sh tests/run_tests.sh ./$(TARGET)
 
 clean:

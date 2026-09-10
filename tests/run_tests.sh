@@ -151,6 +151,18 @@ run many-objects        --split objects "$EX/many_colors.svg"
 run many-objects-tiles  --split objects --plate 60x60 --oversize cut "$EX/many_colors.svg"
 run many-objects-each   --split objects --plate 60x60 --oversize each --join 0 "$EX/many_colors.svg"
 run clip-tiles          --split tiles --plate 80x80 "$EX/clip_pattern.svg"
+# jigsaw plates must cut the logo, not only the base (wide wordmark)
+run intellistream-tiles --split tiles --plate 80x80 --width 400 "$EX/intellistream-logo.svg"
+# large margin + empty tiles must not grow two plates into the same hole
+run intellistream-wide  --split tiles --plate 270x270 --width 1500 --margin 50 "$EX/intellistream-logo.svg"
+# other silhouettes / sizes (closed meshes; layout rules live in test_plates)
+FIX=$HERE/fixtures
+convert l-shape         --split tiles --plate 140x140 --width 300 --margin 40 "$FIX/l_shape.svg"
+convert l-shape-small   --split tiles --plate 90x90 --width 240 --margin 12 "$FIX/l_shape.svg"
+convert sparse          --split tiles --plate 180x180 --width 400 --margin 50 "$FIX/sparse_squares.svg"
+convert circle-tiles    --split tiles --plate 90x90 --width 180 --margin 15 "$FIX/circle.svg"
+convert wide-bar        --split tiles --plate 200x200 --width 800 --margin 20 "$FIX/wide_bar.svg"
+convert blobs           --split tiles --plate 150x150 --width 400 --margin 25 "$FIX/three_blobs.svg"
 # sliding dovetail keys: slots in every plate, the keys in a file of their own
 run arcs-keys           --split objects --join 0 --plate 100x80 --joints keys "$EX/evenodd_arcs.svg"
 check3mf "$OUT/arcs-keys_keys.3mf"
