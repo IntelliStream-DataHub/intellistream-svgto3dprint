@@ -1501,14 +1501,15 @@ static void plate_yield_overlap(chunk_t *cut, const chunk_t *keep)
         int above = cut->tile[1] >= keep->tile[3] - 1e-6;
         int below = cut->tile[3] <= keep->tile[1] + 1e-6;
         int diag = (left || right) && (above || below);
+        /* A diagonal pair only shares a corner.  Shrinking the lower piece's
+         * left/right here would strip its silhouette margin on the whole
+         * height.  Leave both rectangles; the upper plate loses the corner
+         * when the meshes are built. */
+        if (diag) return;
         if (right) cut->plate[0] = keep->plate[2];
         else if (left) cut->plate[2] = keep->plate[0];
-        /* a diagonal pair shares a corner: only yield the side-to-side extra
-         * so row tops/bottoms stay lined up */
-        if (!diag) {
-            if (above) cut->plate[1] = keep->plate[3];
-            else if (below) cut->plate[3] = keep->plate[1];
-        }
+        if (above) cut->plate[1] = keep->plate[3];
+        else if (below) cut->plate[3] = keep->plate[1];
     }
     plate_cover_geom(cut->plate, cut);
 }
@@ -1644,6 +1645,47 @@ static void add_plate_flaps(region_t *plate, const model_t *m, const model_param
             else if (side == 0) plate_union_rect(plate, c, at - mg, a, at, b);
             else plate_union_rect(plate, c, at, a, at + mg, b);
         }
+    }
+}
+
+/* Upper/left plate gives up the overlapping corner to a diagonal neighbour
+ * that kept its shrink-wrapped silhouette, so both stay rectangular in
+ * plate[] but the meshes do not occupy the same XY. */
+static void subtract_diagonal_claims(region_t *plate, const model_t *m, const model_params *p, int i)
+{
+    int k;
+    const chunk_t *c = &m->chunks[i];
+    if (p->chunk_mode != CHUNK_TILES) return;
+    for (k = 0; k < m->nchunks; k++) {
+        const chunk_t *o;
+        double cy, oy, cx, ox, x0, y0, x1, y1;
+        region_t extra, n, tmp;
+        const region_t *subs[1];
+        if (k == i || chunks_share_edge(m, p, i, k)) continue;
+        o = &m->chunks[k];
+        cy = (c->tile[1] + c->tile[3]) / 2;
+        oy = (o->tile[1] + o->tile[3]) / 2;
+        cx = (c->tile[0] + c->tile[2]) / 2;
+        ox = (o->tile[0] + o->tile[2]) / 2;
+        /* the lower (then right) piece keeps the corner */
+        if (oy > cy + 1e-6) continue;
+        if (fabs(oy - cy) <= 1e-6 && ox < cx - 1e-6) continue;
+        x0 = c->plate[0] > o->plate[0] ? c->plate[0] : o->plate[0];
+        y0 = c->plate[1] > o->plate[1] ? c->plate[1] : o->plate[1];
+        x1 = c->plate[2] < o->plate[2] ? c->plate[2] : o->plate[2];
+        y1 = c->plate[3] < o->plate[3] ? c->plate[3] : o->plate[3];
+        if (x1 - x0 < 0.5 || y1 - y0 < 0.5) continue;
+        region_init(&extra);
+        region_add_rect(&extra, x0 - c->center[0], y0 - c->center[1],
+                        x1 - c->center[0], y1 - c->center[1]);
+        if (!region_normalize(&n, &extra, 0)) { region_free(&extra); continue; }
+        region_free(&extra);
+        subs[0] = &n;
+        if (region_subtract(&tmp, plate, subs, 1)) {
+            region_free(plate);
+            *plate = tmp;
+        }
+        region_free(&n);
     }
 }
 
@@ -2224,15 +2266,25 @@ static int z_has_base(const model_params *p)
     return p->base_enabled && p->base_thickness > 0;
 }
 
+/* Largest tile that still fits the plate as a grid piece: margin on the outer
+ * side of that axis, a dovetail tab on the inner side.  (A lone piece needs
+ * 2*margin; a grid never has margin on both ends of the same axis.) */
+static void tile_budget(const model_params *p, double mg, double *tw, double *td)
+{
+    double tab = (p->chunk_joints && z_has_base(p)) ? 12.0 : 0.0;
+    *tw = p->chunk_max_w - mg - tab;
+    *td = p->chunk_max_d - mg - tab;
+    if (*tw < 5) *tw = 5;
+    if (*td < 5) *td = 5;
+}
+
 static void compute_chunks(model_t *m, const model_params *p)
 {
     chunklist list;
     int i, s;
     double mg = (p->base_enabled && p->base_thickness > 0 && p->base_margin > 0) ? p->base_margin : 0.0;
-    double tw = p->chunk_max_w - 2 * mg, td = p->chunk_max_d - 2 * mg;
-    if (p->chunk_joints && z_has_base(p)) { tw -= 12; td -= 12; }   /* room for the dovetail tabs */
-    if (tw < 5) tw = 5;
-    if (td < 5) td = 5;
+    double tw, td;
+    tile_budget(p, mg, &tw, &td);
     memset(&list, 0, sizeof(list));
     model_free_chunks(m);
 
@@ -2386,8 +2438,8 @@ static void compute_chunks(model_t *m, const model_params *p)
         /* pieces too large for the plate that consist of several objects are split between them */
         {
             chunklist split;
-            double Wp = p->chunk_max_w - 2 * mg, Dp = p->chunk_max_d - 2 * mg;
-            if (p->chunk_joints && z_has_base(p)) { Wp -= 12; Dp -= 12; }
+            double Wp, Dp;
+            tile_budget(p, mg, &Wp, &Dp);
             memset(&split, 0, sizeof(split));
             for (i = 0; i < list.n; i++) {
                 chunk_t *c = &list.c[i];
@@ -2679,6 +2731,7 @@ int model_build_meshes(model_t *m, const model_params *p)
                 }
                 plate_build(&c->base_region, rect, rad, js, p->joint_clearance, p->curve_tol_mm);
                 add_plate_flaps(&c->base_region, m, p, i, mg);
+                subtract_diagonal_claims(&c->base_region, m, p, i);
                 clip_chunk_logo_to_plate(c, m);
             } else {
                 rect[0] = lminx - mg; rect[1] = lminy - mg; rect[2] = lmaxx + mg; rect[3] = lmaxy + mg;

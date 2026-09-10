@@ -3,24 +3,20 @@ file: simple.svg
 paths: 5  shapes: 5  colours in SVG: 5  slots: 5  materials: 6/8
 logo size: 214.00 x 118.89 mm  (scale 1.18889 mm/unit)
 model bbox: 220.00 x 124.89 x 4.20 mm
-base: #202020  2.0 mm thick  54743 mm^3
+base: #202020  2.0 mm thick  54814 mm^3
 keys: none (the base plate is thinner than 3 mm)
-pieces: 12 (plate 76 x 76 mm)
-plates: 12 (printer plate 80 x 80 mm, 8 mm between pieces)
-  chunk01: 56.5 x 54.6 mm,  plate 1 at 30.2,29.3
-  chunk02: 64.2 x 54.6 mm,  plate 2 at 34.1,29.3
-  chunk03: 64.2 x 54.6 mm,  plate 3 at 34.1,29.3
-  chunk04: 67.2 x 54.6 mm,  plate 4 at 35.6,29.3
-  chunk05: 56.5 x 51.6 mm,  plate 5 at 30.2,27.8
-  chunk06: 63.4 x 51.6 mm,  plate 6 at 33.7,27.8
-  chunk07: 63.4 x 51.6 mm,  plate 7 at 33.7,27.8
-  chunk08: 66.4 x 51.6 mm,  plate 8 at 35.2,27.8
-  chunk09: 56.5 x 42.6 mm,  plate 9 at 30.2,23.3
-  chunk10: 64.2 x 42.6 mm,  plate 10 at 34.1,23.3
-  chunk11: 64.2 x 42.6 mm,  plate 11 at 34.1,23.3
-  chunk12: 67.2 x 42.6 mm,  plate 12 at 35.6,23.3
-slot 1: #1E3A8A  shapes 1  area 19279.2 mm^2  z 2.00-4.00 mm  volume 50342.7 mm^3  (body)
-slot 2: #10B981  shapes 1  area 2510.4 mm^2  z 4.00-4.20 mm  volume 499.9 mm^3
-slot 3: #F59E0B  shapes 1  area 2131.7 mm^2  z 4.00-4.20 mm  volume 423.1 mm^3
-slot 4: #FFFFFF  shapes 1  area 706.7 mm^2  z 4.00-4.20 mm  volume 140.9 mm^3
-slot 5: #EF4444  shapes 1  area 639.4 mm^2  z 4.00-4.20 mm  volume 127.5 mm^3
+pieces: 8 (plate 76 x 76 mm)
+plates: 8 (printer plate 80 x 80 mm, 8 mm between pieces)
+  chunk01: 56.5 x 74.4 mm,  plate 1 at 30.2,39.2
+  chunk02: 65.5 x 74.4 mm,  plate 2 at 34.8,39.2
+  chunk03: 65.5 x 74.4 mm,  plate 3 at 34.8,39.2
+  chunk04: 68.5 x 74.4 mm,  plate 4 at 36.2,39.2
+  chunk05: 56.5 x 62.4 mm,  plate 5 at 30.2,33.2
+  chunk06: 65.5 x 62.4 mm,  plate 6 at 34.8,33.2
+  chunk07: 65.5 x 62.4 mm,  plate 7 at 34.8,33.2
+  chunk08: 68.5 x 62.4 mm,  plate 8 at 36.2,33.2
+slot 1: #1E3A8A  shapes 1  area 19279.2 mm^2  z 2.00-4.00 mm  volume 50413.4 mm^3  (body)
+slot 2: #10B981  shapes 1  area 2510.4 mm^2  z 4.00-4.20 mm  volume 501.0 mm^3
+slot 3: #F59E0B  shapes 1  area 2131.7 mm^2  z 4.00-4.20 mm  volume 424.9 mm^3
+slot 4: #FFFFFF  shapes 1  area 706.7 mm^2  z 4.00-4.20 mm  volume 141.1 mm^3
+slot 5: #EF4444  shapes 1  area 639.4 mm^2  z 4.00-4.20 mm  volume 127.7 mm^3

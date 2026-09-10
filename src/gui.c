@@ -1010,7 +1010,7 @@ static void panel(gui_t *g, int x, int y, int w, int h)
         }
         /* --- split into pieces --- */
         if (nk_tree_push(ctx, NK_TREE_TAB, "Split into pieces (large prints)", NK_MAXIMIZED)) {
-            static const char *modes[] = {"Off: print as one piece", "By object (letters, symbols)", "Plate-sized tiles"};
+            static const char *modes[] = {"Off: print as one piece", "By object (letters, symbols)", "Plate-sized tiles (fill the bed)"};
             int mode = p->chunk_mode;
             nk_bool b;
             nk_layout_row_dynamic(ctx, 26 * ui, 1);
@@ -1079,6 +1079,10 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 else
                     snprintf(buf, sizeof(buf), "%d piece%s, largest %.0f x %.0f mm (plate %.0f x %.0f)", m->nchunks, m->nchunks == 1 ? "" : "s", maxw, maxd, p->chunk_max_w, p->chunk_max_d);
                 nk_label(ctx, buf, NK_TEXT_LEFT);
+                if (p->chunk_mode == CHUNK_TILES) {
+                    nk_layout_row_dynamic(ctx, 22 * ui, 1);
+                    nk_label(ctx, "Tiles fill the plate; the base margin sits on the outer edges.", NK_TEXT_LEFT);
+                }
                 if (m->nchunks == 1 && p->chunk_mode == CHUNK_TILES) {
                     nk_label_colored(ctx, "The whole logo fits on one plate: nothing to split.", NK_TEXT_LEFT, nk_rgb(255, 200, 90));
                     nk_label_colored(ctx, "Increase the model width to get several tiles.", NK_TEXT_LEFT, nk_rgb(255, 200, 90));

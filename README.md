@@ -84,7 +84,8 @@ which is what `tests/compare_info.py` checks.
 * **Size**: model width or height in mm, mirroring for face-down printing,
   curve tolerance.
 * **Split into pieces**: *By object* keeps letters/symbols together;
-  *Plate-sized tiles* cuts a grid. Pieces too large for the plate are turned,
+  *Plate-sized tiles* cuts a grid whose cells fill the bed (outer margin and
+  joints included). Pieces too large for the plate are turned,
   shrunk, tiled or flagged, per the *Oversize* setting. A *Pieces* tab shows
   every piece on its own plate (orbit/pan/zoom, double-click to open).
   With a base plate, *Connected plates* joins each row into one strip with

@@ -269,6 +269,26 @@ static void check_logo_on_plate(const char *tag, const model_t *m)
     }
 }
 
+/* When the logo is bigger than the bed, tiles should nearly fill it. */
+static void check_fill_plate(const char *tag, const model_t *m, const model_params *p)
+{
+    int i;
+    double maxw = 0, maxd = 0;
+    if (m->nchunks < 6) return;
+    for (i = 0; i < m->nchunks; i++) {
+        double w, d;
+        model_chunk_size(m, i, &w, &d);
+        if (w > maxw) maxw = w;
+        if (d > maxd) maxd = d;
+    }
+    if (m->logo_w > p->chunk_max_w * 1.5 && maxw < 0.72 * p->chunk_max_w)
+        failf(__LINE__, "%s: largest piece is only %.0f mm wide on a %.0f mm plate",
+              tag, maxw, p->chunk_max_w);
+    if (m->logo_h > p->chunk_max_d * 1.5 && maxd < 0.72 * p->chunk_max_d)
+        failf(__LINE__, "%s: largest piece is only %.0f mm deep on a %.0f mm plate",
+              tag, maxd, p->chunk_max_d);
+}
+
 static int run_case(const char *name, const char *svg, double width, double margin, double plate)
 {
     app_state a;
@@ -299,6 +319,7 @@ static int run_case(const char *name, const char *svg, double width, double marg
     check_row_alignment(tag, &a.model);
     check_shrink_wrap(tag, &a.model, margin);
     check_logo_on_plate(tag, &a.model);
+    check_fill_plate(tag, &a.model, &a.params);
     printf("%s: %d pieces%s\n", tag, a.model.nchunks, nfail > before ? "  FAILED" : "");
     app_free(&a);
     return 1;
@@ -322,6 +343,7 @@ int main(int argc, char **argv)
     run_case("logo", EX("intellistream-logo.svg"), 400, 3, 80);
     run_case("logo", EX("intellistream-logo.svg"), 1500, 50, 250);
     run_case("logo", EX("intellistream-logo.svg"), 1500, 50, 270);
+    run_case("logo", EX("intellistream-logo.svg"), 2000, 50, 250);
     run_case("logo", EX("intellistream-logo.svg"), 800, 20, 180);
     run_case("logo", EX("intellistream-logo.svg"), 600, 8, 220);
 

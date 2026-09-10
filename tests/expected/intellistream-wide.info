@@ -2,32 +2,24 @@ file: intellistream-logo.svg
 paths: 183  shapes: 77  colours in SVG: 4  slots: 4  materials: 5/8
 logo size: 1400.00 x 328.42 mm  (scale 4.83933 mm/unit)
 model bbox: 1500.00 x 428.43 x 4.20 mm
-base: #202020  2.0 mm thick  1028095 mm^3
-pieces: 22 (plate 266 x 266 mm)
-plates: 21 (printer plate 270 x 270 mm, 8 mm between pieces)
-  chunk01: 190.0 x 171.5 mm,  plate 1 at 97.0,87.7
-  chunk02: 152.0 x 171.5 mm,  plate 2 at 78.0,87.7
-  chunk03: 152.0 x 171.5 mm,  plate 3 at 78.0,87.7
-  chunk04: 152.0 x 171.5 mm,  plate 4 at 78.0,87.7
-  chunk05: 152.0 x 171.5 mm,  plate 5 at 78.0,87.7
-  chunk06: 152.0 x 171.5 mm,  plate 6 at 78.0,87.7
-  chunk07: 152.0 x 171.5 mm,  plate 7 at 78.0,87.7
-  chunk08: 152.0 x 171.5 mm,  plate 8 at 78.0,87.7
-  chunk09: 152.0 x 171.5 mm,  plate 9 at 78.0,87.7
-  chunk10: 202.0 x 171.5 mm,  plate 10 at 103.0,87.7
-  chunk11: 190.0 x 159.5 mm,  plate 11 at 97.0,81.7
-  chunk12: 152.0 x 159.5 mm,  plate 12 at 78.0,81.7
-  chunk13: 152.0 x 159.5 mm,  plate 13 at 78.0,81.7
-  chunk14: 152.0 x 159.5 mm,  plate 14 at 78.0,81.7
-  chunk15: 152.0 x 159.5 mm,  plate 15 at 78.0,81.7
-  chunk16: 152.0 x 159.5 mm,  plate 16 at 78.0,81.7
-  chunk17: 152.0 x 159.5 mm,  plate 17 at 78.0,81.7
-  chunk18: 152.0 x 159.5 mm,  plate 18 at 78.0,81.7
-  chunk19: 152.0 x 121.5 mm,  plate 19 at 78.0,62.7
-  chunk20: 202.0 x 121.5 mm,  plate 19 at 103.0,192.2
-  chunk21: 140.0 x 159.5 mm,  plate 20 at 72.0,81.7
-  chunk22: 202.0 x 159.5 mm,  plate 21 at 103.0,81.7
-slot 1: #105984  shapes 20  area 75808.5 mm^2  z 2.00-4.00 mm  volume 190016.1 mm^3  (body)
-slot 2: #005984  shapes 2  area 17637.8 mm^2  z 4.00-4.20 mm  volume 3524.0 mm^3
-slot 3: #98BBC8  shapes 22  area 1095.3 mm^2  z 4.00-4.20 mm  volume 219.1 mm^3
-slot 4: #FFFFFF  shapes 33  area 556.3 mm^2  z 4.00-4.20 mm  volume 107.7 mm^3
+base: #202020  2.0 mm thick  1284406 mm^3
+pieces: 14 (plate 266 x 266 mm)
+plates: 14 (printer plate 270 x 270 mm, 8 mm between pieces)
+  chunk01: 250.0 x 226.2 mm,  plate 1 at 127.0,115.1
+  chunk02: 212.0 x 226.2 mm,  plate 2 at 108.0,115.1
+  chunk03: 212.0 x 226.2 mm,  plate 3 at 108.0,115.1
+  chunk04: 212.0 x 226.2 mm,  plate 4 at 108.0,115.1
+  chunk05: 212.0 x 226.2 mm,  plate 5 at 108.0,115.1
+  chunk06: 212.0 x 226.2 mm,  plate 6 at 108.0,115.1
+  chunk07: 262.0 x 226.2 mm,  plate 7 at 133.0,115.1
+  chunk08: 250.0 x 214.2 mm,  plate 8 at 127.0,109.1
+  chunk09: 212.0 x 214.2 mm,  plate 9 at 108.0,109.1
+  chunk10: 212.0 x 214.2 mm,  plate 10 at 108.0,109.1
+  chunk11: 212.0 x 214.2 mm,  plate 11 at 108.0,109.1
+  chunk12: 212.0 x 214.2 mm,  plate 12 at 108.0,109.1
+  chunk13: 212.0 x 214.2 mm,  plate 13 at 108.0,109.1
+  chunk14: 262.0 x 214.2 mm,  plate 14 at 133.0,109.1
+slot 1: #105984  shapes 20  area 75808.5 mm^2  z 2.00-4.00 mm  volume 190095.7 mm^3  (body)
+slot 2: #005984  shapes 2  area 17637.8 mm^2  z 4.00-4.20 mm  volume 3524.7 mm^3
+slot 3: #98BBC8  shapes 22  area 1095.3 mm^2  z 4.00-4.20 mm  volume 218.9 mm^3
+slot 4: #FFFFFF  shapes 33  area 556.3 mm^2  z 4.00-4.20 mm  volume 111.2 mm^3
