@@ -56,6 +56,10 @@ static void usage(FILE *f)
         "                       least 3 mm and writes the keys to FILE_keys), none (separate plates)\n"
         "  --no-joints          same as --joints none\n"
         "  --joint-clearance MM play between tab and socket, and around a key (default 0.15)\n"
+        "  --joint-spacing MM   distance between dovetail tab centres along a seam (default 60;\n"
+        "                       evenly spread, fewer where the tabs would crowd)\n"
+        "  --joint-width MM     width of a dovetail tab at its widest; neck and depth follow\n"
+        "                       (depth at most 12 mm).  0 = sized to each seam (default)\n"
         "  --export-test FILE   write a joint test print (.stl or .3mf): two small plates with the\n"
         "                       current joint and key, to check the clearance on your printer\n"
         "  --single-file        export all pieces into one file instead of one file per piece\n"
@@ -255,6 +259,16 @@ int cli_main(int argc, char **argv, app_state *a)
             else { fprintf(stderr, "bad --joints value '%s' (none, jigsaw, keys)\n", next); return 2; }
         }
         else if (!strcmp(s, "--joint-clearance")) { NEED_ARG(); a->params.joint_clearance = atof(next); }
+        else if (!strcmp(s, "--joint-spacing")) {
+            NEED_ARG();
+            a->params.joint_spacing = atof(next);
+            if (a->params.joint_spacing < 5) { fprintf(stderr, "bad --joint-spacing value '%s' (at least 5 mm)\n", next); return 2; }
+        }
+        else if (!strcmp(s, "--joint-width")) {
+            NEED_ARG();
+            a->params.joint_width = atof(next);
+            if (a->params.joint_width != 0 && (a->params.joint_width < 2 || a->params.joint_width > 100)) { fprintf(stderr, "bad --joint-width value '%s' (0 for auto, or 2-100 mm)\n", next); return 2; }
+        }
         else if (!strcmp(s, "--export-test")) { NEED_ARG(); test_path = next; }
 
         else if (s[0] == '-' && s[1]) { fprintf(stderr, "unknown option '%s'\n", s); usage(stderr); return 2; }

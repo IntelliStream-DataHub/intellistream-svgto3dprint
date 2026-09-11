@@ -157,6 +157,8 @@ void model_params_default(model_params *p)
     p->plate_padding = 40;
     p->chunk_joints = 1;
     p->joint_clearance = 0.15;
+    p->joint_spacing = 60;
+    p->joint_width = 0;
     p->export_color_objects = 0;   /* parts of one object keep their stacking in every slicer */
     p->layered = 1;             /* the main colour forms the body, other colours are layers on top */
     p->layered_flush = 0;
@@ -1105,7 +1107,12 @@ typedef struct {
     double q[8];
 } joint_quad;
 
-#define MAX_JOINT_QUADS (4 * 6)
+/* A tab never reaches further than this beyond its plate: the tile layout
+ * leaves exactly this much room for it on the bed, whatever the tab width. */
+#define TAB_LEN_MAX 12.0
+#define TAB_CORNER_WALL 1.0     /* plate kept between two sockets at a corner */
+#define MAX_TABS_PER_SIDE 24
+#define MAX_JOINT_QUADS (4 * MAX_TABS_PER_SIDE)
 
 /* Dovetail on one side of a plate.  side: 0 left (x=x0), 1 right (x=x1), 2 bottom (y=y0), 3 top (y=y1).
  * Tabs protrude outward from left/bottom edges; sockets are cut inward from right/top edges. */
@@ -1125,11 +1132,13 @@ static void dovetail_quad(int side, double edge, double cc, double neck, double 
     }
 }
 
-/* The dovetails of a plate.  A tab's size turns only on the shared range and
- * len_max, which both pieces of a seam compute alike, so a tab and the socket
- * that receives it agree. */
-static int plate_joint_quads(const double *rect, const joint_spec *joints, double clearance, joint_quad *out)
+/* The dovetails of a plate.  A tab's size turns only on the shared range,
+ * len_max and the joint settings, which both pieces of a seam compute alike,
+ * so a tab and the socket that receives it agree.  Every tab has the same
+ * shape: as deep as its neck is wide, the head 1.7 times that. */
+static int plate_joint_quads(const double *rect, const joint_spec *joints, const model_params *p, joint_quad *out)
 {
+    double pitch = p->joint_spacing >= 1 ? p->joint_spacing : 60.0, cl = p->joint_clearance;
     int side, j, nq = 0;
     for (side = 0; side < 4; side++) {
         const joint_spec *js = &joints[side];
@@ -1138,23 +1147,44 @@ static int plate_joint_quads(const double *rect, const joint_spec *joints, doubl
         if (js->type == 0) continue;
         shared = js->s1 - js->s0;
         if (shared < 6) continue;
-        len = shared * 0.25;
-        if (len < 3) len = 3;
-        if (len > 12) len = 12;
-        if (len > js->len_max) len = js->len_max;
-        neck = len;
-        head = len * 1.7;
-        n = (int)floor(shared / 60.0 + 0.5);
+        if (p->joint_width > 0) {
+            head = p->joint_width;
+            len = head / 1.7;
+            if (len > TAB_LEN_MAX) len = TAB_LEN_MAX;
+            if (len > js->len_max) len = js->len_max;
+            /* a seam too short for the tab and its end room on both sides
+             * (see below) takes a smaller tab of the same shape */
+            if (head + 2 * (len + 2 * cl + TAB_CORNER_WALL) > shared) {
+                double f = (shared - 2 * (2 * cl + TAB_CORNER_WALL)) / (head + 2 * len);
+                if (f <= 0) continue;
+                head *= f;
+                len *= f;
+            }
+            neck = head / 1.7;
+        } else {
+            /* sized to the seam */
+            len = shared * 0.25;
+            if (len < 3) len = 3;
+            if (len > TAB_LEN_MAX) len = TAB_LEN_MAX;
+            if (len > js->len_max) len = js->len_max;
+            neck = len;
+            head = len * 1.7;
+            if (head * 1.2 > shared) continue;
+        }
+        n = (int)floor(shared / pitch + 0.5);
         if (n < 1) n = 1;
-        if (n > 6) n = 6;
-        if (head * n * 1.6 > shared) n = 1;
-        if (head * 1.2 > shared) continue;
+        if (n > MAX_TABS_PER_SIDE) n = MAX_TABS_PER_SIDE;
+        /* At a corner the end sockets of two perpendicular seams meet: each
+         * must stay its depth (grown by the clearance) plus a wall away from
+         * the seam end, or the two cut the corner of the plate off.  The
+         * same room between tabs, and never closer than 0.6 of a head. */
+        while (n > 1 && (shared / n < head + 2 * (len + 2 * cl + TAB_CORNER_WALL) || shared / n < head * 1.6)) n--;
         edge = (side == 0) ? rect[0] : (side == 1) ? rect[2] : (side == 2) ? rect[1] : rect[3];
         for (j = 0; j < n && nq < MAX_JOINT_QUADS; j++) {
             double cc = js->s0 + shared * (j + 0.5) / n;
             out[nq].side = side;
             out[nq].type = js->type;
-            dovetail_quad(side, edge, cc, neck, head, len, js->type == 1 ? 0 : clearance, out[nq].q);
+            dovetail_quad(side, edge, cc, neck, head, len, js->type == 1 ? 0 : p->joint_clearance, out[nq].q);
             nq++;
         }
     }
@@ -1204,11 +1234,11 @@ static void plate_build_quads(region_t *out, const double *rect, const double *r
     *out = norm;
 }
 
-static void plate_build(region_t *out, const double *rect, const double *rad, const joint_spec *joints, double clearance, double tol)
+static void plate_build(region_t *out, const double *rect, const double *rad, const joint_spec *joints, const model_params *p)
 {
     joint_quad quads[MAX_JOINT_QUADS];
-    int nq = plate_joint_quads(rect, joints, clearance, quads);
-    plate_build_quads(out, rect, rad, quads, nq, tol);
+    int nq = plate_joint_quads(rect, joints, p, quads);
+    plate_build_quads(out, rect, rad, quads, nq, p->curve_tol_mm);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1676,9 +1706,9 @@ static void add_plate_flaps(region_t *plate, const model_t *m, const model_param
     double room[2], extra[4];
     if (p->chunk_mode != CHUNK_TILES || mg < 0.5) return;
     chunk_neighbours(m, p, i, nb);
-    extra[0] = nb[0] >= 0 ? 12.0 : 0.0;
+    extra[0] = nb[0] >= 0 ? TAB_LEN_MAX : 0.0;
     extra[1] = 0;
-    extra[2] = nb[2] >= 0 ? 12.0 : 0.0;
+    extra[2] = nb[2] >= 0 ? TAB_LEN_MAX : 0.0;
     extra[3] = 0;
     room[0] = p->chunk_max_w - (c->plate[2] - c->plate[0]) - extra[0];
     room[1] = p->chunk_max_d - (c->plate[3] - c->plate[1]) - extra[2];
@@ -2365,7 +2395,7 @@ static int z_has_base(const model_params *p)
 
 static void tile_budget(const model_params *p, double mg, tile_budget_t *b)
 {
-    double tab = (p->chunk_joints && z_has_base(p)) ? 12.0 : 0.0;
+    double tab = (p->chunk_joints && z_has_base(p)) ? TAB_LEN_MAX : 0.0;
     double side = tab > 0 ? tab : mg;
     b->room = mg + side;
     b->w = p->chunk_max_w - b->room;
@@ -2569,7 +2599,7 @@ static void compute_chunks(model_t *m, const model_params *p)
          * fits or no cut can help. */
         if (p->chunk_oversize == 0) {
             int pass, ngroups = list.n, joints = p->chunk_joints && z_has_base(p);
-            double tab = joints ? 12.0 : 0.0;
+            double tab = joints ? TAB_LEN_MAX : 0.0;
             for (pass = 0; pass < 8; pass++) {
                 chunklist cut;
                 int any = 0;
@@ -2882,7 +2912,7 @@ int model_build_meshes(model_t *m, const model_params *p)
                 }
                 {
                     joint_quad quads[MAX_JOINT_QUADS];
-                    int nq = plate_joint_quads(rect, js, p->joint_clearance, quads);
+                    int nq = plate_joint_quads(rect, js, p, quads);
                     plate_build_quads(&c->base_region, rect, rad, quads, nq, p->curve_tol_mm);
                     add_plate_flaps(&c->base_region, m, p, i, mg);
                     subtract_diagonal_claims(&c->base_region, m, p, i);
@@ -3253,10 +3283,10 @@ int model_build_coupon(const model_params *p, mesh_t *left, mesh_t *right, mesh_
         slL[nL].side = 1; slL[nL].c = sk.c[k]; slL[nL].len = sk.len + KEY_PARK + p->joint_clearance; nL++;
         slR[nR].side = 0; slR[nR].c = sk.c[k]; slR[nR].len = sk.len / 2 + KEY_PARK; nR++;
     }
-    plate_build(&reg, rectL, radL, jsL, p->joint_clearance, p->curve_tol_mm);
+    plate_build(&reg, rectL, radL, jsL, p);
     plate_mesh(left, &reg, rectL, slL, nL, t, p);
     region_free(&reg);
-    plate_build(&reg, rectR, radR, jsR, p->joint_clearance, p->curve_tol_mm);
+    plate_build(&reg, rectR, radR, jsR, p);
     plate_mesh(right, &reg, rectR, slR, nR, t, p);
     region_free(&reg);
     if (sk.n > 0) {

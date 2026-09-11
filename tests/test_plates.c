@@ -22,6 +22,8 @@
 
 static int nfail, ncheck;
 static char root[1024];
+/* dovetail tab width and spacing for the next cases (0 width = sized to the seam) */
+static double case_joint_width = 0, case_joint_spacing = 60;
 
 static void check_(int ok, const char *what, int line)
 {
@@ -362,12 +364,16 @@ static int run_case(const char *name, const char *svg, double width, double marg
     int before = nfail;
     snprintf(tag, sizeof tag, "%s %s%s w=%.0f mg=%.0f plate=%.0f", name, mode == CHUNK_TILES ? "tiles" : "objects",
              joints ? "" : "/loose", width, margin, plate);
+    if (case_joint_width > 0 || case_joint_spacing != 60)
+        snprintf(tag + strlen(tag), sizeof tag - strlen(tag), " tab=%.0f/%.0f", case_joint_width, case_joint_spacing);
     app_init(&a);
     a.params.width_mm = width;
     a.width_from_cli = 1;
     a.params.base_margin = margin;
     a.params.chunk_mode = mode;
     a.params.chunk_joints = joints;
+    a.params.joint_width = case_joint_width;
+    a.params.joint_spacing = case_joint_spacing;
     if (mode == CHUNK_OBJECTS) a.params.chunk_oversize = 0;   /* cut: pieces must fit as cut, never shrunk */
     a.params.chunk_max_w = plate - 4;
     a.params.chunk_max_d = plate - 4;
@@ -470,6 +476,17 @@ int main(int argc, char **argv)
     run_case("squares", FX("two_squares.svg"), 58, 3, 60, CHUNK_OBJECTS, 0);
     run_case("squares", FX("two_squares.svg"), 90, 3, 60, CHUNK_OBJECTS, 1);
     run_case("bar", FX("wide_bar.svg"), 1046, 3, 60, CHUNK_OBJECTS, 0);
+
+    /* chosen tab sizes: a tab wider than the auto maximum stays within the
+     * depth the tiles leave for it, and small close tabs keep the artwork */
+    case_joint_width = 40; case_joint_spacing = 150;
+    TILES("logo", EX("intellistream-logo.svg"), 400, 3, 80);
+    TILES("simple", EX("simple.svg"), 400, 10, 180);
+    run_case("arcs", EX("evenodd_arcs.svg"), 240, 20, 140, CHUNK_OBJECTS, 1);
+    case_joint_width = 6; case_joint_spacing = 15;
+    TILES("logo", EX("intellistream-logo.svg"), 400, 3, 80);
+    TILES("L", FX("l_shape.svg"), 240, 12, 90);
+    case_joint_width = 0; case_joint_spacing = 60;
 
 #undef EX
 #undef FX

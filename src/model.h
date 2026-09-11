@@ -109,6 +109,8 @@ typedef struct {
     double plate_padding;       /* mm kept free around a one-piece model when fitting it to the plate */
     int chunk_joints;           /* joint_style_t: how neighbouring base plates are joined */
     double joint_clearance;     /* mm of play between tab and socket, and around a key */
+    double joint_spacing;       /* wanted distance between dovetail tab centres along a seam (mm) */
+    double joint_width;         /* width of a dovetail tab at its widest (mm), 0 = sized to the seam */
     /* layered colours: one colour forms the whole logo body, the others are
      * thin layers on top of it (raised) or inlaid flush with its top */
     int layered;

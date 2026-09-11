@@ -296,6 +296,7 @@ static int params_need_meshes(const model_params *a, const model_params *b)
     if (a->chunk_mode != b->chunk_mode || a->chunk_join_pct != b->chunk_join_pct || a->chunk_oversize != b->chunk_oversize) return 1;
     if (a->chunk_max_w != b->chunk_max_w || a->chunk_max_d != b->chunk_max_d) return 1;
     if (a->chunk_joints != b->chunk_joints || a->joint_clearance != b->joint_clearance) return 1;
+    if (a->joint_spacing != b->joint_spacing || a->joint_width != b->joint_width) return 1;
     return 0;
 }
 
@@ -839,18 +840,21 @@ static void panel_colors(gui_t *g)
         nk_layout_row_end(ctx);
     }
     if (m->nslots > 0) {
+        /* a property shows its value only in the room its label leaves, so
+         * these rows give each field at least half the panel */
         nk_layout_row_begin(ctx, NK_DYNAMIC, 24 * ui, 2);
-        nk_layout_row_push(ctx, 0.62f);
+        nk_layout_row_push(ctx, 0.74f);
         nk_property_float(ctx, "#Same height (mm)", 0.05f, &g->same_height, 50, 0.1f, 0.02f);
-        nk_layout_row_push(ctx, 0.38f);
+        nk_layout_row_push(ctx, 0.26f);
         if (nk_button_label(ctx, "Apply to all")) for (i = 0; i < MAX_SLOTS; i++) p->slot_height[i] = g->same_height;
         nk_layout_row_end(ctx);
         nk_layout_row_dynamic(ctx, 22 * ui, 1);
-        nk_label(ctx, "Stagger: distinct heights per colour, fewer filament changes", NK_TEXT_LEFT);
-        nk_layout_row_dynamic(ctx, 24 * ui, 3);
+        nk_label(ctx, "Stagger (mm): a distinct height per colour", NK_TEXT_LEFT);
+        nk_layout_row_dynamic(ctx, 24 * ui, 2);
         nk_property_float(ctx, "#First", 0.05f, &g->stagger_first, 50, 0.1f, 0.02f);
         nk_property_float(ctx, "#Step", 0.0f, &g->stagger_step, 10, 0.1f, 0.02f);
-        if (nk_button_label(ctx, "Stagger")) app_stagger_heights(g->app, g->stagger_first, g->stagger_step);
+        nk_layout_row_dynamic(ctx, 26 * ui, 1);
+        if (nk_button_label(ctx, "Stagger heights (fewer filament changes)")) app_stagger_heights(g->app, g->stagger_first, g->stagger_step);
     }
 }
 
@@ -1113,8 +1117,17 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                         }
                     }
                     if (p->chunk_joints) {
+                        double tw = p->joint_width;
                         nk_layout_row_dynamic(ctx, 24 * ui, 1);
                         nk_property_double(ctx, "#Joint clearance (mm)", 0, &p->joint_clearance, 1, 0.05, 0.005f);
+                        nk_property_double(ctx, "#Tab spacing (mm)", 5, &p->joint_spacing, 500, 5, 0.5f);
+                        nk_property_double(ctx, "#Tab width (mm, 0 = auto)", 0, &tw, 100, 1, 0.1f);
+                        /* no hair-thin tabs: stepping up from auto starts at 2 mm, down from there returns to auto */
+                        if (tw > 0 && tw < 2) tw = p->joint_width > 0 ? 0 : 2;
+                        p->joint_width = tw;
+                        nk_layout_row_dynamic(ctx, 22 * ui, 1);
+                        if (tw > 0) nk_label(ctx, "Tabs keep their shape; depth stops at 12 mm.", NK_TEXT_LEFT);
+                        else nk_label(ctx, "Auto: each tab sized to its seam (up to 20 mm).", NK_TEXT_LEFT);
                     }
                     if (p->chunk_joints == JOINTS_KEYS) {
                         nk_layout_row_dynamic(ctx, 22 * ui, 1);
