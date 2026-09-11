@@ -43,6 +43,10 @@ typedef struct {
     double plate_pos[2];        /* centre of its exported footprint on that plate (mm from the front-left corner) */
     region_t slot_region[MAX_SLOTS];    /* local coords (centred on the chunk) */
     region_t body_region;               /* layered mode: union of all colours */
+    /* the artwork as cut at the tile lines; slot_region / body_region are
+     * derived from these on every mesh build (jigsaw plates reshape them) */
+    region_t cut_slot_region[MAX_SLOTS];
+    region_t cut_body_region;
     region_t base_region;
     mesh_t slot_mesh[MAX_SLOTS];
     mesh_t base_mesh;

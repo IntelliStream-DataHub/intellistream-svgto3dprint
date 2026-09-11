@@ -57,9 +57,9 @@ int app_rebuild(app_state *a)
     unsigned old_rgb[MAX_SLOTS];
     double old_h[MAX_SLOTS];
     unsigned old_ov_rgb[MAX_SLOTS];
-    int old_ov[MAX_SLOTS], old_vis[MAX_SLOTS], old_merge[MAX_SLOTS], old_n = a->model.nslots, i, j;
+    int old_ov[MAX_SLOTS], old_vis[MAX_SLOTS], old_merge[MAX_SLOTS], old_n = a->pslots_n, i, j;
     for (i = 0; i < old_n; i++) {
-        old_rgb[i] = a->model.slots[i].rgb;
+        old_rgb[i] = a->pslots_rgb[i];
         old_h[i] = a->params.slot_height[i];
         old_ov[i] = a->params.slot_rgb_override[i];
         old_ov_rgb[i] = a->params.slot_rgb[i];
@@ -98,6 +98,14 @@ int app_rebuild(app_state *a)
                     }
                 }
             }
+            /* the base plate follows its colour too, or is its own colour again */
+            if (np.base_color_slot >= 0) {
+                int k, found = -1;
+                if (np.base_color_slot < old_n)
+                    for (k = 0; k < a->model.nslots; k++)
+                        if (a->model.slots[k].rgb == old_rgb[np.base_color_slot]) found = k;
+                np.base_color_slot = found;
+            }
             if (memcmp(&np, &a->params, sizeof(np)) != 0) {
                 a->params = np;
                 if (!model_layout(&a->model, a->doc, &a->params, err, sizeof(err))) {
@@ -107,6 +115,8 @@ int app_rebuild(app_state *a)
             }
         }
     }
+    a->pslots_n = a->model.nslots;
+    for (i = 0; i < a->model.nslots; i++) a->pslots_rgb[i] = a->model.slots[i].rgb;
     return app_rebuild_meshes(a);
 }
 

@@ -205,9 +205,11 @@ static void check_row_alignment(const char *tag, const model_t *m)
         const chunk_t *a = &m->chunks[i];
         int top = !has_nb(m, i, 0, 1), bot = !has_nb(m, i, 0, -1);
         if (!top && !bot) continue;
+        if (top && bot) continue;   /* alone in its column: may shrink-wrap to fit the bed */
         for (j = i + 1; j < m->nchunks; j++) {
             const chunk_t *b = &m->chunks[j];
             if (a->group != b->group || a->iy != b->iy) continue;
+            if (!has_nb(m, j, 0, 1) && !has_nb(m, j, 0, -1)) continue;
             if (top && !has_nb(m, j, 0, 1) && fabs(a->plate[3] - b->plate[3]) > 0.6)
                 failf(__LINE__, "%s: pieces %d and %d (row iy=%d) top misaligned by %.2f mm",
                       tag, i + 1, j + 1, a->iy, fabs(a->plate[3] - b->plate[3]));
@@ -269,38 +271,104 @@ static void check_logo_on_plate(const char *tag, const model_t *m)
     }
 }
 
-/* When the logo is bigger than the bed, tiles should nearly fill it. */
+/* Tiles are as large as the plate allows: the grid has exactly the columns
+ * and rows the budget calls for (margin on the outer side of an axis, a tab
+ * on the other; both margins when the axis is not split), and every cell is
+ * a full one. */
 static void check_fill_plate(const char *tag, const model_t *m, const model_params *p)
 {
-    int i;
+    double mg = p->base_margin, side = p->chunk_joints ? 12 : mg;
+    double tw = p->chunk_max_w - mg - side, td = p->chunk_max_d - mg - side;
     double maxw = 0, maxd = 0;
-    if (m->nchunks < 6) return;
+    int i, nx = 0, ny = 0, want_nx, want_ny;
+    if (m->nchunks < 2) return;
     for (i = 0; i < m->nchunks; i++) {
-        double w, d;
-        model_chunk_size(m, i, &w, &d);
-        if (w > maxw) maxw = w;
-        if (d > maxd) maxd = d;
+        const chunk_t *c = &m->chunks[i];
+        if (c->tile[2] - c->tile[0] > maxw) maxw = c->tile[2] - c->tile[0];
+        if (c->tile[3] - c->tile[1] > maxd) maxd = c->tile[3] - c->tile[1];
+        if (c->ix + 1 > nx) nx = c->ix + 1;
+        if (c->iy + 1 > ny) ny = c->iy + 1;
     }
-    if (m->logo_w > p->chunk_max_w * 1.5 && maxw < 0.72 * p->chunk_max_w)
-        failf(__LINE__, "%s: largest piece is only %.0f mm wide on a %.0f mm plate",
-              tag, maxw, p->chunk_max_w);
-    if (m->logo_h > p->chunk_max_d * 1.5 && maxd < 0.72 * p->chunk_max_d)
-        failf(__LINE__, "%s: largest piece is only %.0f mm deep on a %.0f mm plate",
-              tag, maxd, p->chunk_max_d);
+    /* one tile when the extent fits with both margins, else at least two */
+    if (m->logo_w <= p->chunk_max_w - 2 * mg + 1e-6) want_nx = 1;
+    else { want_nx = (int)ceil(m->logo_w / tw - 1e-6); if (want_nx < 2) want_nx = 2; }
+    if (m->logo_h <= p->chunk_max_d - 2 * mg + 1e-6) want_ny = 1;
+    else { want_ny = (int)ceil(m->logo_h / td - 1e-6); if (want_ny < 2) want_ny = 2; }
+    if (nx != want_nx || ny != want_ny)
+        failf(__LINE__, "%s: %d x %d tiles, the plate allows %d x %d (cells %.0f x %.0f mm)", tag, nx, ny, want_nx, want_ny, tw, td);
+    else if (maxw < m->logo_w / want_nx - 0.5 || maxd < m->logo_h / want_ny - 0.5)
+        failf(__LINE__, "%s: largest tile %.0f x %.0f mm, cells should be %.0f x %.0f", tag, maxw, maxd, m->logo_w / want_nx, m->logo_h / want_ny);
 }
 
-static int run_case(const char *name, const char *svg, double width, double margin, double plate)
+/* Every piece fits its plate as designed: unscaled, and a tile upright. */
+static void check_fits(const char *tag, const model_t *m, const model_params *p)
+{
+    int i;
+    for (i = 0; i < m->nchunks; i++) {
+        const chunk_t *c = &m->chunks[i];
+        double w = c->bbox_max[0] - c->bbox_min[0], d = c->bbox_max[1] - c->bbox_min[1];
+        if (!c->fits || c->scale != 1)
+            failf(__LINE__, "%s: piece %d (%.1f x %.1f mm) does not fit the %.0f x %.0f mm plate%s", tag, i + 1, w, d,
+                  p->chunk_max_w, p->chunk_max_d, c->scale != 1 ? " (shrunk to fit)" : "");
+        else if (p->chunk_mode == CHUNK_TILES && (w > p->chunk_max_w + 1e-6 || d > p->chunk_max_d + 1e-6))
+            failf(__LINE__, "%s: tile %d (%.1f x %.1f mm) fits the %.0f x %.0f mm plate only turned", tag, i + 1, w, d,
+                  p->chunk_max_w, p->chunk_max_d);
+    }
+}
+
+/* One plate per piece: no islands, no holes. */
+static void check_one_plate(const char *tag, const model_t *m)
+{
+    int i, k;
+    for (i = 0; i < m->nchunks; i++) {
+        const chunk_t *c = &m->chunks[i];
+        if (c->base_region.n == 1) continue;
+        failf(__LINE__, "%s: piece %d has %d plate contours (plate %.1f,%.1f-%.1f,%.1f, tile %.1f,%.1f-%.1f,%.1f)", tag, i + 1,
+              c->base_region.n, c->plate[0], c->plate[1], c->plate[2], c->plate[3], c->tile[0], c->tile[1], c->tile[2], c->tile[3]);
+        for (k = 0; k < c->base_region.n; k++) {
+            region_t one;
+            region_init(&one);
+            region_add_contour(&one, c->base_region.c[k].pts, c->base_region.c[k].n);
+            fprintf(stderr, "    contour %d: %.1f mm^2 at %.1f,%.1f-%.1f,%.1f (model coords)\n", k + 1, contour_area(&one.c[0]),
+                    one.minx + c->center[0], one.miny + c->center[1], one.maxx + c->center[0], one.maxy + c->center[1]);
+            region_free(&one);
+        }
+    }
+}
+
+/* Splitting neither invents nor duplicates artwork.  Jigsaw sockets may lose
+ * the clearance ring around each tab; nothing else goes missing. */
+static void check_conservation(const char *tag, const model_t *m, const model_params *p)
+{
+    int s, i;
+    for (s = -1; s < m->nslots; s++) {
+        double whole = s < 0 ? region_area(&m->footprint) : m->slots[s].area, split = 0;
+        double tol = 1e-3 * whole + 0.05, lost_max = p->chunk_joints ? 0.01 * whole + 1.0 * m->nchunks : tol;
+        if (s >= 0 && m->slots[s].merged_into >= 0) continue;
+        for (i = 0; i < m->nchunks; i++)
+            split += region_area(s < 0 ? &m->chunks[i].body_region : &m->chunks[i].slot_region[s]);
+        if (split > whole + tol)
+            failf(__LINE__, "%s: %s has %.1f mm^2 on the pieces but %.1f in the model: artwork invented", tag,
+                  s < 0 ? "body" : "slot", split, whole);
+        else if (split < whole - lost_max)
+            failf(__LINE__, "%s: %s %d lost %.1f of %.1f mm^2 to the split", tag, s < 0 ? "body" : "slot", s + 1, whole - split, whole);
+    }
+}
+
+static int run_case(const char *name, const char *svg, double width, double margin, double plate, int mode, int joints)
 {
     app_state a;
     char tag[256];
     int before = nfail;
-    snprintf(tag, sizeof tag, "%s w=%.0f mg=%.0f plate=%.0f", name, width, margin, plate);
+    snprintf(tag, sizeof tag, "%s %s%s w=%.0f mg=%.0f plate=%.0f", name, mode == CHUNK_TILES ? "tiles" : "objects",
+             joints ? "" : "/loose", width, margin, plate);
     app_init(&a);
     a.params.width_mm = width;
     a.width_from_cli = 1;
     a.params.base_margin = margin;
-    a.params.chunk_mode = CHUNK_TILES;
-    a.params.chunk_joints = 1;
+    a.params.chunk_mode = mode;
+    a.params.chunk_joints = joints;
+    if (mode == CHUNK_OBJECTS) a.params.chunk_oversize = 0;   /* cut: pieces must fit as cut, never shrunk */
     a.params.chunk_max_w = plate - 4;
     a.params.chunk_max_d = plate - 4;
     if (!app_load_svg(&a, svg)) {
@@ -314,12 +382,19 @@ static int run_case(const char *name, const char *svg, double width, double marg
         app_free(&a);
         return 1;
     }
-    check_overlaps(tag, &a.model);
+    check_fits(tag, &a.model, &a.params);
+    check_one_plate(tag, &a.model);
+    check_conservation(tag, &a.model, &a.params);
     check_coverage(tag, &a.model, margin);
-    check_row_alignment(tag, &a.model);
-    check_shrink_wrap(tag, &a.model, margin);
     check_logo_on_plate(tag, &a.model);
-    check_fill_plate(tag, &a.model, &a.params);
+    if (mode == CHUNK_TILES) check_fill_plate(tag, &a.model, &a.params);
+    if (mode == CHUNK_TILES && joints) {
+        /* the plate rectangles exist for connected plates only; loose tiles
+         * are each their own artwork plus margin */
+        check_overlaps(tag, &a.model);
+        check_row_alignment(tag, &a.model);
+        check_shrink_wrap(tag, &a.model, margin);
+    }
     printf("%s: %d pieces%s\n", tag, a.model.nchunks, nfail > before ? "  FAILED" : "");
     app_free(&a);
     return 1;
@@ -333,50 +408,72 @@ int main(int argc, char **argv)
 
 #define EX(f) path_join(p, sizeof p, EXAMPLES_DIR, f)
 #define FX(f) path_join(p, sizeof p, FIXTURES_DIR, f)
+#define TILES(name, f, w, mg, plate) run_case(name, f, w, mg, plate, CHUNK_TILES, 1)
 
     /* filled logo, several plate sizes */
-    run_case("simple", EX("simple.svg"), 200, 3, 250);
-    run_case("simple", EX("simple.svg"), 200, 20, 120);
-    run_case("simple", EX("simple.svg"), 400, 10, 180);
+    TILES("simple", EX("simple.svg"), 200, 3, 250);
+    TILES("simple", EX("simple.svg"), 200, 20, 120);
+    TILES("simple", EX("simple.svg"), 400, 10, 180);
 
     /* wide wordmark: empty cells, large margin (the layout bugs) */
-    run_case("logo", EX("intellistream-logo.svg"), 400, 3, 80);
-    run_case("logo", EX("intellistream-logo.svg"), 1500, 50, 250);
-    run_case("logo", EX("intellistream-logo.svg"), 1500, 50, 270);
-    run_case("logo", EX("intellistream-logo.svg"), 2000, 50, 250);
-    run_case("logo", EX("intellistream-logo.svg"), 800, 20, 180);
-    run_case("logo", EX("intellistream-logo.svg"), 600, 8, 220);
+    TILES("logo", EX("intellistream-logo.svg"), 400, 3, 80);
+    TILES("logo", EX("intellistream-logo.svg"), 1500, 50, 250);
+    TILES("logo", EX("intellistream-logo.svg"), 1500, 50, 270);
+    TILES("logo", EX("intellistream-logo.svg"), 2000, 50, 250);
+    TILES("logo", EX("intellistream-logo.svg"), 800, 20, 180);
+    TILES("logo", EX("intellistream-logo.svg"), 600, 8, 220);
+    TILES("logo", EX("intellistream-logo.svg"), 722, 20, 200);
 
     /* dense clip-path art */
-    run_case("clip", EX("clip_pattern.svg"), 200, 3, 80);
-    run_case("clip", EX("clip_pattern.svg"), 280, 12, 100);
+    TILES("clip", EX("clip_pattern.svg"), 200, 3, 80);
+    TILES("clip", EX("clip_pattern.svg"), 280, 12, 100);
 
     /* arcs and holes */
-    run_case("arcs", EX("evenodd_arcs.svg"), 180, 8, 100);
-    run_case("arcs", EX("evenodd_arcs.svg"), 240, 20, 140);
+    TILES("arcs", EX("evenodd_arcs.svg"), 180, 8, 100);
+    TILES("arcs", EX("evenodd_arcs.svg"), 240, 20, 140);
 
-    run_case("overlap", EX("overlap.svg"), 200, 15, 90);
-    run_case("colors", EX("many_colors.svg"), 200, 5, 80);
+    TILES("overlap", EX("overlap.svg"), 200, 15, 90);
+    TILES("colors", EX("many_colors.svg"), 200, 5, 80);
 
     /* synthetic silhouettes */
-    run_case("L", FX("l_shape.svg"), 300, 40, 140);
-    run_case("L", FX("l_shape.svg"), 500, 50, 180);
-    run_case("L", FX("l_shape.svg"), 240, 12, 90);
+    TILES("L", FX("l_shape.svg"), 300, 40, 140);
+    TILES("L", FX("l_shape.svg"), 500, 50, 180);
+    TILES("L", FX("l_shape.svg"), 240, 12, 90);
 
-    run_case("sparse", FX("sparse_squares.svg"), 400, 50, 180);
-    run_case("sparse", FX("sparse_squares.svg"), 250, 20, 120);
+    TILES("sparse", FX("sparse_squares.svg"), 400, 50, 180);
+    TILES("sparse", FX("sparse_squares.svg"), 250, 20, 120);
 
-    run_case("circle", FX("circle.svg"), 180, 15, 90);
-    run_case("circle", FX("circle.svg"), 300, 40, 160);
+    TILES("circle", FX("circle.svg"), 180, 15, 90);
+    TILES("circle", FX("circle.svg"), 300, 40, 160);
 
-    run_case("bar", FX("wide_bar.svg"), 800, 20, 200);
-    run_case("bar", FX("wide_bar.svg"), 400, 8, 120);
+    TILES("bar", FX("wide_bar.svg"), 800, 20, 200);
+    TILES("bar", FX("wide_bar.svg"), 400, 8, 120);
 
-    run_case("blobs", FX("three_blobs.svg"), 400, 25, 150);
-    run_case("blobs", FX("three_blobs.svg"), 220, 8, 90);
+    TILES("blobs", FX("three_blobs.svg"), 400, 25, 150);
+    TILES("blobs", FX("three_blobs.svg"), 220, 8, 90);
+
+    /* staggered column: a neighbour shrink-wrapped off the seam leaves a flap, not an island */
+    TILES("stair", FX("stair3.svg"), 100, 3, 120);
+
+    /* tiles without joints: every plate is its artwork plus the margin all round */
+    run_case("simple", EX("simple.svg"), 400, 10, 180, CHUNK_TILES, 0);
+    run_case("logo", EX("intellistream-logo.svg"), 770, 5, 200, CHUNK_TILES, 0);
+    run_case("logo", EX("intellistream-logo.svg"), 1500, 50, 250, CHUNK_TILES, 0);
+    run_case("L", FX("l_shape.svg"), 500, 50, 180, CHUNK_TILES, 0);
+
+    /* split by object: every letter keeps its own artwork, seams carry only tabs */
+    run_case("colors", EX("many_colors.svg"), 200, 3, 60, CHUNK_OBJECTS, 1);
+    run_case("colors", EX("many_colors.svg"), 200, 3, 60, CHUNK_OBJECTS, 0);
+    run_case("arcs", EX("evenodd_arcs.svg"), 240, 20, 140, CHUNK_OBJECTS, 1);
+    run_case("logo", EX("intellistream-logo.svg"), 400, 3, 250, CHUNK_OBJECTS, 1);
+    run_case("rects", FX("two_rects.svg"), 106, 3, 250, CHUNK_OBJECTS, 1);
+    run_case("squares", FX("two_squares.svg"), 58, 3, 60, CHUNK_OBJECTS, 0);
+    run_case("squares", FX("two_squares.svg"), 90, 3, 60, CHUNK_OBJECTS, 1);
+    run_case("bar", FX("wide_bar.svg"), 1046, 3, 60, CHUNK_OBJECTS, 0);
 
 #undef EX
 #undef FX
+#undef TILES
 
     printf("test_plates: %d checks, %d failed\n", ncheck, nfail);
     return nfail ? 1 : 0;

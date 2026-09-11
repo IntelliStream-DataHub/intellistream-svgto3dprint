@@ -110,27 +110,36 @@ static void model_changed(gui_t *g)
     g->nmeasure = 0;
 }
 
+static void panel_capture(const gui_t *g, panel_undo_state *s);
+static void panel_apply_state(gui_t *g, const panel_undo_state *s);
+
 static void load_file(gui_t *g, const char *path)
 {
+    panel_undo_state keep;
     if (!path || !path[0]) return;
-    /* a new logo starts from defaults; printer settings (plate, grid) are kept */
+    /* a new logo starts from defaults; printer settings (plate, grid) are kept.
+     * A file that does not load keeps the current logo, its settings and
+     * their undo history. */
+    panel_capture(g, &keep);
     model_params_default(&g->app->params);
+    g->app->pslots_n = 0;
     g->app->params.chunk_max_w = g->view.bed_w - 4;
     g->app->params.chunk_max_d = g->view.bed_d - 4;
     g->same_height = 1.0f;
     g->stagger_first = 0.6f;
     g->stagger_step = 0.2f;
     g->export_mode = 0;
-    g->measure_mode = 0;
-    g->nmeasure = 0;
-    g->tab = 0;
-    g->sel_piece = -1;
-    g->grid_zoom = 1.0f;
-    g->grid_pan[0] = g->grid_pan[1] = 0;
-    g->export_buf[0] = 0;
     if (app_load_svg(g->app, path)) {
         char title[1200];
         const svg_doc *d = g->app->doc;
+        g->measure_mode = 0;
+        g->nmeasure = 0;
+        g->tab = 0;
+        g->sel_piece = -1;
+        g->grid_zoom = 1.0f;
+        g->grid_pan[0] = g->grid_pan[1] = 0;
+        g->export_buf[0] = 0;
+        panel_undo_reset(&g->undo, NULL);
         model_changed(g);
         camera_fit(&g->cam, &g->app->model);
         snprintf(g->path_buf, sizeof(g->path_buf), "%s", path);
@@ -141,9 +150,9 @@ static void load_file(gui_t *g, const char *path)
             set_status(g, "Loaded. %d colours merged into %d slots.", g->app->model.colors_before_merge, g->app->model.nslots);
         else set_status(g, "Loaded %s", path);
     } else {
+        panel_apply_state(g, &keep);
         set_status(g, "Error: %s", g->app->last_error);
     }
-    panel_undo_reset(&g->undo, NULL);
 }
 
 static void do_export(gui_t *g, int kind, const char *path)
@@ -697,12 +706,8 @@ static void panel_colors(gui_t *g)
         snprintf(buf, sizeof(buf), "%d SVG colours were merged into %d slots", m->colors_before_merge, m->nslots);
         nk_label_colored(ctx, buf, NK_TEXT_LEFT, nk_rgb(255, 200, 90));
     }
-    {
-        float t = (float)p->merge_threshold;
-        nk_layout_row_dynamic(ctx, 24 * ui, 1);
-        nk_property_float(ctx, "Merge similar colours (0-200)", 0, &t, 200, 1, 0.5f);
-        p->merge_threshold = t;
-    }
+    nk_layout_row_dynamic(ctx, 24 * ui, 1);
+    nk_property_double(ctx, "Merge similar colours (0-200)", 0, &p->merge_threshold, 200, 1, 0.5f);
     {
         /* stacking: one colour forms the body, the others are thin layers on top */
         nk_bool b = p->layered != 0;
@@ -985,11 +990,7 @@ static void panel(gui_t *g, int x, int y, int w, int h)
             nk_property_float(ctx, "#Plate width X (mm)", 50, &g->view.bed_w, 1000, 5, 0.5f);
             nk_property_float(ctx, "#Plate depth Y (mm)", 50, &g->view.bed_d, 1000, 5, 0.5f);
             nk_property_float(ctx, "#Grid step (mm)", 1, &g->view.grid_step, 100, 1, 0.2f);
-            {
-                float pad = (float)p->plate_padding;
-                nk_property_float(ctx, "#One-piece padding (mm)", 0, &pad, 200, 5, 0.5f);
-                p->plate_padding = pad;
-            }
+            nk_property_double(ctx, "#One-piece padding (mm)", 0, &p->plate_padding, 200, 5, 0.5f);
             nk_layout_row_dynamic(ctx, 22 * ui, 2);
             b = g->view.show_bed != 0; nk_checkbox_label(ctx, "Show plate", &b); g->view.show_bed = b;
             b = g->view.show_grid != 0; nk_checkbox_label(ctx, "Show grid", &b); g->view.show_grid = b;
@@ -1025,11 +1026,9 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 }
             }
             if (p->chunk_mode == CHUNK_OBJECTS) {
-                float jp = (float)p->chunk_join_pct;
                 (void)b;
                 nk_layout_row_dynamic(ctx, 24 * ui, 1);
-                nk_property_float(ctx, "#Join gap (% of logo height)", 0, &jp, 50, 0.5f, 0.1f);
-                p->chunk_join_pct = jp;
+                nk_property_double(ctx, "#Join gap (% of logo height)", 0, &p->chunk_join_pct, 50, 0.5, 0.1f);
                 nk_layout_row_dynamic(ctx, 22 * ui, 1);
                 snprintf(buf, sizeof(buf), "Side-by-side objects closer than %.1f mm join", p->chunk_join_pct / 100.0 * m->logo_h);
                 nk_label(ctx, buf, NK_TEXT_LEFT);
@@ -1057,15 +1056,13 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 }
             }
             if (p->chunk_mode != CHUNK_OFF) {
-                float sp = (float)p->chunk_spacing;
                 const char *items[130];
                 char names[130][16];
                 int i, n = m->nchunks < 128 ? m->nchunks : 128, sel = p->chunk_view;
                 double maxw = 0, maxd = 0;
                 int oversize = 0;
                 nk_layout_row_dynamic(ctx, 24 * ui, 1);
-                nk_property_float(ctx, "#Piece spacing (mm)", 0, &sp, 200, 1, 0.2f);
-                p->chunk_spacing = sp;
+                nk_property_double(ctx, "#Piece spacing (mm)", 0, &p->chunk_spacing, 200, 1, 0.2f);
                 for (i = 0; i < m->nchunks; i++) {
                     double w, d;
                     model_chunk_size(m, i, &w, &d);
@@ -1106,7 +1103,6 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 if (p->base_enabled && p->base_thickness > 0) {
                     static const char *styles[] = {"Separate plates, no joints", "Connected: jigsaw dovetails (drop in)", "Connected: jigsaw + sliding keys (lock)"};
                     int style = p->chunk_joints < 0 || p->chunk_joints > 2 ? 1 : p->chunk_joints;
-                    float cl = (float)p->joint_clearance;
                     nk_layout_row_dynamic(ctx, 26 * ui, 1);
                     style = nk_combo(ctx, styles, 3, style, (int)(24 * ui), nk_vec2(nk_widget_width(ctx), 110 * ui));
                     if (style != p->chunk_joints) {
@@ -1118,8 +1114,7 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                     }
                     if (p->chunk_joints) {
                         nk_layout_row_dynamic(ctx, 24 * ui, 1);
-                        nk_property_float(ctx, "#Joint clearance (mm)", 0, &cl, 1, 0.05f, 0.005f);
-                        p->joint_clearance = cl;
+                        nk_property_double(ctx, "#Joint clearance (mm)", 0, &p->joint_clearance, 1, 0.05, 0.005f);
                     }
                     if (p->chunk_joints == JOINTS_KEYS) {
                         nk_layout_row_dynamic(ctx, 22 * ui, 1);
@@ -1187,8 +1182,8 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                 ctx->style.combo.sym_normal = saved_sym; ctx->style.combo.sym_hover = saved_hover; ctx->style.combo.sym_active = saved_active;
                 }
                 nk_layout_row_push(ctx, 200 * ui);
-                sel = nk_combo(ctx, items, m->nslots + 1, sel, (int)(24 * ui), nk_vec2(200 * ui, 200 * ui));
-                p->base_color_slot = sel - 1;
+                i = nk_combo(ctx, items, m->nslots + 1, sel, (int)(24 * ui), nk_vec2(200 * ui, 200 * ui));
+                if (i != sel) p->base_color_slot = i - 1;   /* a slot the model lacks stays for the rebuild's remap */
                 nk_layout_row_end(ctx);
             }
             nk_tree_pop(ctx);
@@ -1316,15 +1311,6 @@ static int event_undo_cmd(const SDL_Event *e)
                              (e->key.mod & SDL_KMOD_ALT) != 0, key);
 }
 
-static void panel_unfocus(gui_t *g)
-{
-    struct nk_window *w = nk_window_find(g->ctx, "Panel");
-    if (w) {
-        w->edit.active = 0;
-        w->property.active = 0;
-    }
-}
-
 static void panel_capture(const gui_t *g, panel_undo_state *s)
 {
     memset(s, 0, sizeof(*s));
@@ -1334,6 +1320,8 @@ static void panel_capture(const gui_t *g, panel_undo_state *s)
     s->params.chunk_max_w = 0;
     s->params.chunk_max_d = 0;
     s->params.export_color_objects = 0;
+    s->nslots = g->app->pslots_n;
+    memcpy(s->slot_rgb, g->app->pslots_rgb, sizeof(s->slot_rgb));
     s->bed_w = g->view.bed_w;
     s->bed_d = g->view.bed_d;
     s->grid_step = g->view.grid_step;
@@ -1358,6 +1346,10 @@ static void panel_apply_state(gui_t *g, const panel_undo_state *s)
     g->app->params = s->params;
     g->app->params.chunk_view = chunk_view;
     g->app->params.export_color_objects = export_co;
+    /* the per-slot settings refer to the snapshot's slots; app_rebuild()
+     * remaps them by colour onto whatever the re-layout produces */
+    g->app->pslots_n = s->nslots;
+    memcpy(g->app->pslots_rgb, s->slot_rgb, sizeof(g->app->pslots_rgb));
     g->view.bed_w = s->bed_w;
     g->view.bed_d = s->bed_d;
     g->view.grid_step = s->grid_step;
@@ -1377,26 +1369,36 @@ static void panel_apply_state(gui_t *g, const panel_undo_state *s)
     g->app->params.chunk_max_d = g->view.bed_d - 4;
 }
 
+/* The edit in progress this frame, for coalescing: a property being typed
+ * into or dragged, a text field, or the mouse held on a widget. */
+static unsigned panel_gesture(gui_t *g)
+{
+    const struct nk_window *w = nk_window_find(g->ctx, "Panel");
+    if (w && w->property.active) return w->property.name | 0x80000000u;
+    if (w && w->edit.active) return w->edit.name | 0x80000000u;
+    return g->ctx->input.mouse.buttons[NK_BUTTON_LEFT].down ? 1u : 0u;
+}
+
 static void panel_commit_undo(gui_t *g)
 {
     panel_undo_state now;
     const panel_undo_state *s = NULL;
-    panel_capture(g, &now);
-    if (g->undo_cmd == 1 && panel_undo_can_undo(&g->undo)) s = panel_undo_undo(&g->undo);
-    else if (g->undo_cmd == 2 && panel_undo_can_redo(&g->undo)) s = panel_undo_redo(&g->undo);
+    int cmd = g->undo_cmd;
     g->undo_cmd = 0;
+    /* not in the middle of a drag or a field edit: the widget would write its
+     * own value back over the restored one on the next frame */
+    if (cmd && (g->ctx->input.mouse.buttons[NK_BUTTON_LEFT].down || text_field_active(g))) cmd = 0;
+    if (cmd == 1 && panel_undo_can_undo(&g->undo)) s = panel_undo_undo(&g->undo);
+    else if (cmd == 2 && panel_undo_can_redo(&g->undo)) s = panel_undo_redo(&g->undo);
     if (s) {
-        panel_unfocus(g);
         panel_apply_state(g, s);
         g->dirty = 1;
         g->dirty_since = 0;
         schedule_rebuild(g);
         return;
     }
-    {
-        int down = g->ctx->input.mouse.buttons[NK_BUTTON_LEFT].down;
-        panel_undo_record(&g->undo, &now, down || text_field_active(g));
-    }
+    panel_capture(g, &now);
+    panel_undo_record(&g->undo, &now, panel_gesture(g));
 }
 
 static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *running)
@@ -1476,9 +1478,10 @@ static void handle_event(gui_t *g, const SDL_Event *e, int vw, int vh, int *runn
         break;
     }
     case SDL_EVENT_KEY_DOWN: {
-        int ucmd = event_undo_cmd(e);
+        int ucmd;
+        if (text_active) break;     /* a field being typed into keeps its keys, Ctrl+Z as text undo */
+        ucmd = event_undo_cmd(e);
         if (ucmd) { g->undo_cmd = ucmd; break; }
-        if (text_active) break;
         switch (e->key.key) {
         case SDLK_F:
             if (g->tab == 1) { g->grid_zoom = 1.0f; g->grid_pan[0] = g->grid_pan[1] = 0; }
@@ -1834,8 +1837,9 @@ int gui_main(app_state *a)
 
         nk_input_begin(g.ctx);
         while (SDL_PollEvent(&e)) {
-            /* keep document undo/redo out of Nuklear's text-edit undo */
-            if (!event_undo_cmd(&e)) nk_sdl_handle_event(&e);
+            /* document undo/redo stays out of Nuklear, except as text undo
+             * while a field is being typed into */
+            if (!event_undo_cmd(&e) || text_field_active(&g)) nk_sdl_handle_event(&e);
             handle_event(&g, &e, vw, vh, &running);
         }
         nk_input_end(g.ctx);

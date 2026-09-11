@@ -74,26 +74,38 @@ $(BUILD)/tess2_%.o: third_party/libtess2/%.c | $(BUILD)
 $(BUILD):
 	mkdir -p $(BUILD)
 
+# Tests build from the program's own objects, so header changes rebuild them too.
 # Unit tests for the polygon operations: no SDL, just region.c and libtess2.
 TEST_REGION = $(BUILD)/test_region
 
-$(TEST_REGION): tests/test_region.c src/region.c src/region.h $(TESS_OBJ) | $(BUILD)
-	$(CC) $(CSTD) $(CFLAGS) $(FPFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 -o $@ tests/test_region.c src/region.c $(TESS_OBJ) -lm
+$(BUILD)/test_region.o: tests/test_region.c | $(BUILD)
+	$(CC) $(CSTD) $(CFLAGS) $(FPFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 -MMD -MP -c -o $@ $<
+
+$(TEST_REGION): $(BUILD)/test_region.o $(BUILD)/region.o $(TESS_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 # Headless widget tests: Nuklear only, no window.
 TEST_UI = $(BUILD)/test_ui
 
-$(TEST_UI): tests/test_ui.c src/nk_config.h $(NK_OBJ) | $(BUILD)
-	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/nuklear -o $@ tests/test_ui.c $(NK_OBJ) -lm
+$(BUILD)/test_ui.o: tests/test_ui.c | $(BUILD)
+	$(CC) $(CSTD) $(CFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/nuklear -MMD -MP -c -o $@ $<
+
+$(TEST_UI): $(BUILD)/test_ui.o $(NK_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 # Plate-layout checks across shapes and sizes (no SDL).
 TEST_PLATES = $(BUILD)/test_plates
-PLATES_SRC = src/xml.c src/svg.c src/region.c src/model.c src/app.c src/textfont.c
+PLATES_OBJ = $(addprefix $(BUILD)/,xml.o svg.o region.o model.o app.o textfont.o)
 
-$(TEST_PLATES): tests/test_plates.c $(PLATES_SRC) src/app.h src/model.h $(TESS_OBJ) | $(BUILD)
-	$(CC) $(CSTD) $(CFLAGS) $(FPFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 -Ithird_party/stb \
-		-DEXAMPLES_DIR=\"$(CURDIR)/examples\" -DFIXTURES_DIR=\"$(CURDIR)/tests/fixtures\" \
-		-o $@ tests/test_plates.c $(PLATES_SRC) $(TESS_OBJ) -lm
+$(BUILD)/test_plates.o: tests/test_plates.c | $(BUILD)
+	$(CC) $(CSTD) $(CFLAGS) $(FPFLAGS) $(WARN) $(DEFS) -Isrc -Ithird_party/libtess2 \
+		-DEXAMPLES_DIR='"$(CURDIR)/examples"' -DFIXTURES_DIR='"$(CURDIR)/tests/fixtures"' \
+		-MMD -MP -c -o $@ $<
+
+$(TEST_PLATES): $(BUILD)/test_plates.o $(PLATES_OBJ) $(TESS_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+-include $(BUILD)/test_region.d $(BUILD)/test_ui.d $(BUILD)/test_plates.d
 
 test: $(TARGET) $(TEST_REGION) $(TEST_UI) $(TEST_PLATES)
 	$(TEST_REGION)

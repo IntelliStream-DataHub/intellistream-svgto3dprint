@@ -152,6 +152,31 @@ static void test_panel_undo_coalesce(void)
     CHECK(s && s->params.width_mm == 5);
 }
 
+/* Gestures: one step per drag or per field commit, never one step for two fields. */
+static void test_panel_undo_gestures(void)
+{
+    panel_undo u;
+    panel_undo_state a;
+    st(&a, 1); panel_undo_reset(&u, &a);
+    /* typing into field A commits on the click that opens field B: two steps */
+    st(&a, 2); panel_undo_record(&u, &a, 0x80000001u);
+    st(&a, 3); panel_undo_record(&u, &a, 0x80000002u);
+    CHECK(u.n == 3 && u.cur == 2);
+    /* the same gesture coalesces, a different one does not */
+    st(&a, 4); panel_undo_record(&u, &a, 0x80000002u);
+    CHECK(u.n == 3 && u.hist[2].params.width_mm == 4);
+    /* a drag, a release with nothing changed, another drag: two steps */
+    st(&a, 5); panel_undo_record(&u, &a, 1);
+    st(&a, 6); panel_undo_record(&u, &a, 1);
+    panel_undo_record(&u, &a, 0);
+    st(&a, 7); panel_undo_record(&u, &a, 1);
+    CHECK(u.n == 5 && u.hist[3].params.width_mm == 6 && u.hist[4].params.width_mm == 7);
+    /* recording the state an undo just restored keeps the redo branch */
+    panel_undo_undo(&u);
+    st(&a, 6); panel_undo_record(&u, &a, 0);
+    CHECK(u.n == 5 && u.cur == 3 && panel_undo_can_redo(&u));
+}
+
 static void test_panel_undo_overflow(void)
 {
     panel_undo u;
@@ -171,6 +196,7 @@ int main(void)
     test_panel_undo_hotkey();
     test_panel_undo_stack();
     test_panel_undo_coalesce();
+    test_panel_undo_gestures();
     test_panel_undo_overflow();
     printf("test_ui: %d checks, %d failed\n", ncheck, nfail);
     return nfail ? 1 : 0;

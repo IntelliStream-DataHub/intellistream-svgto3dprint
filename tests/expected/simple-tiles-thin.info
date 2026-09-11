@@ -7,11 +7,11 @@ base: #202020  2.0 mm thick  54814 mm^3
 keys: none (the base plate is thinner than 3 mm)
 pieces: 8 (plate 76 x 76 mm)
 plates: 8 (printer plate 80 x 80 mm, 8 mm between pieces)
-  chunk01: 56.5 x 74.4 mm,  plate 1 at 30.2,39.2
+  chunk01: 56.5 x 74.4 mm,  plate 1 at 30.3,39.2
   chunk02: 65.5 x 74.4 mm,  plate 2 at 34.8,39.2
   chunk03: 65.5 x 74.4 mm,  plate 3 at 34.8,39.2
   chunk04: 68.5 x 74.4 mm,  plate 4 at 36.2,39.2
-  chunk05: 56.5 x 62.4 mm,  plate 5 at 30.2,33.2
+  chunk05: 56.5 x 62.4 mm,  plate 5 at 30.3,33.2
   chunk06: 65.5 x 62.4 mm,  plate 6 at 34.8,33.2
   chunk07: 65.5 x 62.4 mm,  plate 7 at 34.8,33.2
   chunk08: 68.5 x 62.4 mm,  plate 8 at 36.2,33.2

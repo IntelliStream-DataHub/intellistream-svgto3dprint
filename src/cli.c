@@ -112,7 +112,8 @@ static void print_info(const app_state *a)
             else printf("keys: %d sliding dovetail keys, %.1f-%.1f x %.1f x %.2f mm (exported to FILE_keys)\n", m->nkeys, lmin, lmax, kw, kh);
         }
     }
-    if (m->nchunks > 1) {
+    /* a lone piece is still reported when it is too large for the plate */
+    if (p->chunk_mode != CHUNK_OFF && (m->nchunks > 1 || !m->chunks[0].fits)) {
         printf("pieces: %d (plate %.0f x %.0f mm)", m->nchunks, p->chunk_max_w, p->chunk_max_d);
         if (p->chunk_mode == CHUNK_OBJECTS && m->chunk_fit_scale > 0) printf("  every piece fits uncut up to %.0f%% of this size", m->chunk_fit_scale * 100);
         if (m->chunk_uniform_scale < 0.9995) printf("  all pieces scaled to %.0f%%", m->chunk_uniform_scale * 100);

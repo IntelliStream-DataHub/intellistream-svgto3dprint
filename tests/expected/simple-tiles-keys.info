@@ -6,11 +6,11 @@ base: #202020  3.0 mm thick  75011 mm^3
 keys: 18 sliding dovetail keys, 24.0 x 6.4 x 1.70 mm (exported to FILE_keys)
 pieces: 8 (plate 76 x 76 mm)
 plates: 8 (printer plate 80 x 80 mm, 8 mm between pieces)
-  chunk01: 56.5 x 67.1 mm,  plate 1 at 30.2,35.5
+  chunk01: 56.5 x 67.1 mm,  plate 1 at 30.3,35.5
   chunk02: 56.6 x 69.3 mm,  plate 2 at 30.3,36.7
   chunk03: 56.6 x 69.3 mm,  plate 3 at 30.3,36.7
   chunk04: 59.6 x 67.1 mm,  plate 4 at 31.8,35.5
-  chunk05: 56.5 x 62.4 mm,  plate 5 at 30.2,33.2
+  chunk05: 56.5 x 62.4 mm,  plate 5 at 30.3,33.2
   chunk06: 56.6 x 62.4 mm,  plate 6 at 30.3,33.2
   chunk07: 56.6 x 62.4 mm,  plate 7 at 30.3,33.2
   chunk08: 59.6 x 62.4 mm,  plate 8 at 31.8,33.2

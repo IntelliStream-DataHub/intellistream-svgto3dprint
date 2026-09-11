@@ -1,7 +1,7 @@
 /* Undo/redo stack for the right-hand settings panel.
  *
  * History stores snapshots of every panel-editable setting.  Consecutive
- * changes while the user is still dragging a slider or typing in a field
+ * changes made by one gesture (a slider drag, a property being typed into)
  * coalesce into one step. */
 #ifndef LOGO3D_PANEL_UNDO_H
 #define LOGO3D_PANEL_UNDO_H
@@ -13,6 +13,8 @@
 
 typedef struct {
     model_params params;
+    int nslots;                     /* the colour slots params refer to (app_state.pslots_*) */
+    unsigned slot_rgb[MAX_SLOTS];
     float bed_w, bed_d, grid_step;
     int show_bed, show_grid, show_bbox, show_outline;
     int show_dims, show_slot_dims, show_triad, cam_ortho, export_mode;
@@ -22,7 +24,7 @@ typedef struct {
 typedef struct {
     panel_undo_state hist[PANEL_UNDO_MAX];
     int n, cur;
-    int group;              /* 1 while coalescing an in-progress gesture */
+    unsigned gesture;       /* the gesture the newest step belongs to, 0 when it is over */
 } panel_undo;
 
 /* 1 = undo, 2 = redo, 0 = neither.
@@ -51,20 +53,24 @@ static void panel_undo_reset(panel_undo *u, const panel_undo_state *now)
     }
 }
 
-static void panel_undo_record(panel_undo *u, const panel_undo_state *now, int coalesce)
+/* Record the state at the end of a frame.  `gesture` names the edit in
+ * progress (non-zero while the mouse is held on a widget or a field is being
+ * typed into): changes within one gesture rewrite the newest step, a change
+ * under a different gesture, or none, starts a new one. */
+static void panel_undo_record(panel_undo *u, const panel_undo_state *now, unsigned gesture)
 {
     if (u->n <= 0) {
         u->hist[0] = *now;
         u->n = 1;
         u->cur = 0;
-        u->group = 0;
+        u->gesture = 0;
         return;
     }
     if (panel_undo_equal(&u->hist[u->cur], now)) {
-        if (!coalesce) u->group = 0;
+        if (!gesture) u->gesture = 0;
         return;
     }
-    if (coalesce && u->group) {
+    if (gesture && gesture == u->gesture) {
         u->hist[u->cur] = *now;
         return;
     }
@@ -72,7 +78,7 @@ static void panel_undo_record(panel_undo *u, const panel_undo_state *now, int co
     else memmove(&u->hist[0], &u->hist[1], sizeof(u->hist[0]) * (PANEL_UNDO_MAX - 1));
     u->hist[u->cur] = *now;
     u->n = u->cur + 1;
-    u->group = coalesce ? 1 : 0;
+    u->gesture = gesture;
 }
 
 static int panel_undo_can_undo(const panel_undo *u) { return u->cur > 0; }
@@ -81,14 +87,14 @@ static int panel_undo_can_redo(const panel_undo *u) { return u->cur + 1 < u->n; 
 static const panel_undo_state *panel_undo_undo(panel_undo *u)
 {
     if (!panel_undo_can_undo(u)) return NULL;
-    u->group = 0;
+    u->gesture = 0;
     return &u->hist[--u->cur];
 }
 
 static const panel_undo_state *panel_undo_redo(panel_undo *u)
 {
     if (!panel_undo_can_redo(u)) return NULL;
-    u->group = 0;
+    u->gesture = 0;
     return &u->hist[++u->cur];
 }
 
