@@ -283,7 +283,11 @@ int nk_sdl_handle_event(const SDL_Event *evt)
     case SDL_EVENT_KEY_DOWN: {
         int down = evt->type == SDL_EVENT_KEY_DOWN;
         SDL_Keycode sym = evt->key.key;
+#ifdef __APPLE__
+        int ctrl = (evt->key.mod & SDL_KMOD_GUI) != 0;
+#else
         int ctrl = (evt->key.mod & SDL_KMOD_CTRL) != 0;
+#endif
         if (sym == SDLK_RSHIFT || sym == SDLK_LSHIFT) nk_input_key(ctx, NK_KEY_SHIFT, down);
         else if (sym == SDLK_DELETE) nk_input_key(ctx, NK_KEY_DEL, down);
         else if (sym == SDLK_RETURN || sym == SDLK_KP_ENTER) nk_input_key(ctx, NK_KEY_ENTER, down);

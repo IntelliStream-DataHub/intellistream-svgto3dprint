@@ -157,6 +157,8 @@ void model_params_default(model_params *p)
     p->plate_padding = 40;
     p->chunk_joints = 1;
     p->joint_clearance = 0.15;
+    p->joint_spacing = 60;
+    p->joint_width = 0;
     p->export_color_objects = 0;   /* parts of one object keep their stacking in every slicer */
     p->layered = 1;             /* the main colour forms the body, other colours are layers on top */
     p->layered_flush = 0;
@@ -203,8 +205,9 @@ static void chunk_init(chunk_t *c)
     int i;
     memset(c, 0, sizeof(*c));
     region_init(&c->clip);
-    for (i = 0; i < MAX_SLOTS; i++) { region_init(&c->slot_region[i]); mesh_init(&c->slot_mesh[i]); }
+    for (i = 0; i < MAX_SLOTS; i++) { region_init(&c->slot_region[i]); region_init(&c->cut_slot_region[i]); mesh_init(&c->slot_mesh[i]); }
     region_init(&c->body_region);
+    region_init(&c->cut_body_region);
     region_init(&c->base_region);
     mesh_init(&c->base_mesh);
 }
@@ -213,8 +216,9 @@ static void chunk_free(chunk_t *c)
 {
     int i;
     region_free(&c->clip);
-    for (i = 0; i < MAX_SLOTS; i++) { region_free(&c->slot_region[i]); mesh_free(&c->slot_mesh[i]); }
+    for (i = 0; i < MAX_SLOTS; i++) { region_free(&c->slot_region[i]); region_free(&c->cut_slot_region[i]); mesh_free(&c->slot_mesh[i]); }
     region_free(&c->body_region);
+    region_free(&c->cut_body_region);
     region_free(&c->base_region);
     mesh_free(&c->base_mesh);
 }
@@ -1092,13 +1096,28 @@ static void rounded_rect4(region_t *r, double x0, double y0, double x1, double y
 typedef struct {
     int type;           /* 0 none, 1 tab (male), 2 socket (female) */
     double s0, s1;      /* range along the edge shared with the neighbour (local coords) */
+    double len_max;     /* cap on the tab length, the same on both sides of the seam */
 } joint_spec;
+
+/* One dovetail of a plate: a quad in local coords, a tab protruding beyond
+ * the edge or a socket cut into the plate (grown by the clearance). */
+typedef struct {
+    int side;           /* 0 left, 1 right, 2 bottom, 3 top */
+    int type;           /* 1 tab, 2 socket */
+    double q[8];
+} joint_quad;
+
+/* A tab never reaches further than this beyond its plate: the tile layout
+ * leaves exactly this much room for it on the bed, whatever the tab width. */
+#define TAB_LEN_MAX 12.0
+#define TAB_CORNER_WALL 1.0     /* plate kept between two sockets at a corner */
+#define MAX_TABS_PER_SIDE 24
+#define MAX_JOINT_QUADS (4 * MAX_TABS_PER_SIDE)
 
 /* Dovetail on one side of a plate.  side: 0 left (x=x0), 1 right (x=x1), 2 bottom (y=y0), 3 top (y=y1).
  * Tabs protrude outward from left/bottom edges; sockets are cut inward from right/top edges. */
-static void dovetail_side(region_t *r, int side, double edge, double cc, double neck, double head, double len, double grow)
+static void dovetail_quad(int side, double edge, double cc, double neck, double head, double len, double grow, double *q)
 {
-    double q[8];
     double n2 = neck / 2 + grow, h2 = head / 2 + grow, L = len + grow, e = 0.1;
     if (side == 0 || side == 1) {
         q[0] = edge + e; q[1] = cc - n2;
@@ -1111,20 +1130,16 @@ static void dovetail_side(region_t *r, int side, double edge, double cc, double 
         q[4] = cc + h2; q[5] = edge - L;
         q[6] = cc + n2; q[7] = edge + e;
     }
-    add_piece(r, q, 4);
 }
 
-/* Plate rectangle (local coords) with per-corner radii and dovetail joints. */
-static void plate_build(region_t *out, const double *rect, const double *rad, const joint_spec *joints, double clearance, double tol)
+/* The dovetails of a plate.  A tab's size turns only on the shared range,
+ * len_max and the joint settings, which both pieces of a seam compute alike,
+ * so a tab and the socket that receives it agree.  Every tab has the same
+ * shape: as deep as its neck is wide, the head 1.7 times that. */
+static int plate_joint_quads(const double *rect, const joint_spec *joints, const model_params *p, joint_quad *out)
 {
-    region_t base, norm, tabs, socks, tmp;
-    int side, j, have_tabs = 0, have_socks = 0;
-    region_init(&base);
-    rounded_rect4(&base, rect[0], rect[1], rect[2], rect[3], rad, tol);
-    region_normalize(&norm, &base, 0);
-    region_free(&base);
-    region_init(&tabs);
-    region_init(&socks);
+    double pitch = p->joint_spacing >= 1 ? p->joint_spacing : 60.0, cl = p->joint_clearance;
+    int side, j, nq = 0;
     for (side = 0; side < 4; side++) {
         const joint_spec *js = &joints[side];
         double shared, len, neck, head, edge;
@@ -1132,24 +1147,66 @@ static void plate_build(region_t *out, const double *rect, const double *rad, co
         if (js->type == 0) continue;
         shared = js->s1 - js->s0;
         if (shared < 6) continue;
-        len = shared * 0.25;
-        if (len < 3) len = 3;
-        if (len > 12) len = 12;
-        if (side < 2 && len > (rect[2] - rect[0]) * 0.4) len = (rect[2] - rect[0]) * 0.4;
-        if (side >= 2 && len > (rect[3] - rect[1]) * 0.4) len = (rect[3] - rect[1]) * 0.4;
-        neck = len;
-        head = len * 1.7;
-        n = (int)floor(shared / 60.0 + 0.5);
-        if (n < 1) n = 1;
-        if (n > 6) n = 6;
-        if (head * n * 1.6 > shared) n = 1;
-        if (head * 1.2 > shared) continue;
-        edge = (side == 0) ? rect[0] : (side == 1) ? rect[2] : (side == 2) ? rect[1] : rect[3];
-        for (j = 0; j < n; j++) {
-            double cc = js->s0 + shared * (j + 0.5) / n;
-            if (js->type == 1) { dovetail_side(&tabs, side, edge, cc, neck, head, len, 0); have_tabs = 1; }
-            else { dovetail_side(&socks, side, edge, cc, neck, head, len, clearance); have_socks = 1; }
+        if (p->joint_width > 0) {
+            head = p->joint_width;
+            len = head / 1.7;
+            if (len > TAB_LEN_MAX) len = TAB_LEN_MAX;
+            if (len > js->len_max) len = js->len_max;
+            /* a seam too short for the tab and its end room on both sides
+             * (see below) takes a smaller tab of the same shape */
+            if (head + 2 * (len + 2 * cl + TAB_CORNER_WALL) > shared) {
+                double f = (shared - 2 * (2 * cl + TAB_CORNER_WALL)) / (head + 2 * len);
+                if (f <= 0) continue;
+                head *= f;
+                len *= f;
+            }
+            neck = head / 1.7;
+        } else {
+            /* sized to the seam */
+            len = shared * 0.25;
+            if (len < 3) len = 3;
+            if (len > TAB_LEN_MAX) len = TAB_LEN_MAX;
+            if (len > js->len_max) len = js->len_max;
+            neck = len;
+            head = len * 1.7;
+            if (head * 1.2 > shared) continue;
         }
+        n = (int)floor(shared / pitch + 0.5);
+        if (n < 1) n = 1;
+        if (n > MAX_TABS_PER_SIDE) n = MAX_TABS_PER_SIDE;
+        /* At a corner the end sockets of two perpendicular seams meet: each
+         * must stay its depth (grown by the clearance) plus a wall away from
+         * the seam end, or the two cut the corner of the plate off.  The
+         * same room between tabs, and never closer than 0.6 of a head. */
+        while (n > 1 && (shared / n < head + 2 * (len + 2 * cl + TAB_CORNER_WALL) || shared / n < head * 1.6)) n--;
+        edge = (side == 0) ? rect[0] : (side == 1) ? rect[2] : (side == 2) ? rect[1] : rect[3];
+        for (j = 0; j < n && nq < MAX_JOINT_QUADS; j++) {
+            double cc = js->s0 + shared * (j + 0.5) / n;
+            out[nq].side = side;
+            out[nq].type = js->type;
+            dovetail_quad(side, edge, cc, neck, head, len, js->type == 1 ? 0 : p->joint_clearance, out[nq].q);
+            nq++;
+        }
+    }
+    return nq;
+}
+
+/* Plate rectangle (local coords) with per-corner radii and dovetail joints. */
+static void plate_build_quads(region_t *out, const double *rect, const double *rad, const joint_quad *quads, int nq, double tol)
+{
+    region_t base, norm, tabs, socks, tmp;
+    int i, have_tabs = 0, have_socks = 0;
+    region_init(&base);
+    rounded_rect4(&base, rect[0], rect[1], rect[2], rect[3], rad, tol);
+    region_normalize(&norm, &base, 0);
+    region_free(&base);
+    region_init(&tabs);
+    region_init(&socks);
+    for (i = 0; i < nq; i++) {
+        double q[8];
+        memcpy(q, quads[i].q, sizeof(q));
+        if (quads[i].type == 1) { add_piece(&tabs, q, 4); have_tabs = 1; }
+        else { add_piece(&socks, q, 4); have_socks = 1; }
     }
     if (have_tabs) {
         region_t ntabs;
@@ -1175,6 +1232,13 @@ static void plate_build(region_t *out, const double *rect, const double *rad, co
     region_free(&socks);
     region_clean(&norm, 1e-4);
     *out = norm;
+}
+
+static void plate_build(region_t *out, const double *rect, const double *rad, const joint_spec *joints, const model_params *p)
+{
+    joint_quad quads[MAX_JOINT_QUADS];
+    int nq = plate_joint_quads(rect, joints, p, quads);
+    plate_build_quads(out, rect, rad, quads, nq, p->curve_tol_mm);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1312,7 +1376,7 @@ int model_key_mesh(const model_t *m, const model_params *p, int k, mesh_t *out)
     return 1;
 }
 
-/* One key slot of a plate: side as in dovetail_side, centre along that side
+/* One key slot of a plate: side as in dovetail_quad, centre along that side
  * (local coords) and depth into the plate. */
 typedef struct {
     int side;
@@ -1477,6 +1541,60 @@ static void chunk_neighbours(const model_t *m, const model_params *p, int i, int
     }
 }
 
+/* Keep the plate covering the artwork after a clip. */
+static void plate_cover_geom(double *pl, const chunk_t *c)
+{
+    if (pl[0] > c->gmin[0]) pl[0] = c->gmin[0];
+    if (pl[1] > c->gmin[1]) pl[1] = c->gmin[1];
+    if (pl[2] < c->gmax[0]) pl[2] = c->gmax[0];
+    if (pl[3] < c->gmax[1]) pl[3] = c->gmax[1];
+}
+
+/* Overlap of two plate rectangles (model coords), if it is worth anything. */
+static int rects_overlap(const double *a, const double *b, double *x0, double *y0, double *x1, double *y1)
+{
+    *x0 = a[0] > b[0] ? a[0] : b[0];
+    *y0 = a[1] > b[1] ? a[1] : b[1];
+    *x1 = a[2] < b[2] ? a[2] : b[2];
+    *y1 = a[3] < b[3] ? a[3] : b[3];
+    return *x1 - *x0 >= 0.5 && *y1 - *y0 >= 0.5;
+}
+
+/* Two tiles of one grid that share an edge.  O(1): the tile passes below
+ * look at every pair of pieces. */
+static int tiles_adjacent(const chunk_t *a, const chunk_t *b)
+{
+    return a->group == b->group && abs(a->ix - b->ix) + abs(a->iy - b->iy) == 1;
+}
+
+/* Reading order of two tiles: the upper one first, then the left one. */
+static int tile_precedes(const chunk_t *a, const chunk_t *b)
+{
+    double ay = (a->tile[1] + a->tile[3]) / 2, by = (b->tile[1] + b->tile[3]) / 2;
+    if (fabs(ay - by) > 1e-6) return ay > by;
+    return (a->tile[0] + a->tile[2]) / 2 < (b->tile[0] + b->tile[2]) / 2 - 1e-6;
+}
+
+/* Shrink `cut`'s plate so it no longer overlaps `keep`, without eating the artwork.
+ * Used at concave corners: two exposed edges both grow into the same empty cell. */
+static void plate_yield_overlap(chunk_t *cut, const chunk_t *keep)
+{
+    int right = cut->tile[0] >= keep->tile[2] - 1e-6;
+    int left = cut->tile[2] <= keep->tile[0] + 1e-6;
+    int above = cut->tile[1] >= keep->tile[3] - 1e-6;
+    int below = cut->tile[3] <= keep->tile[1] + 1e-6;
+    /* A diagonal pair only shares a corner.  Shrinking the lower piece's
+     * left/right here would strip its silhouette margin on the whole
+     * height.  Leave both rectangles; the upper plate loses the corner
+     * when the meshes are built (subtract_diagonal_claims). */
+    if ((left || right) && (above || below)) return;
+    if (right) cut->plate[0] = keep->plate[2];
+    else if (left) cut->plate[2] = keep->plate[0];
+    if (above) cut->plate[1] = keep->plate[3];
+    else if (below) cut->plate[3] = keep->plate[1];
+    plate_cover_geom(cut->plate, cut);
+}
+
 /* Plate rectangles of every chunk (model coords), from tile cut lines, row extents and margins. */
 static void compute_plates(model_t *m, const model_params *p, double mg)
 {
@@ -1500,15 +1618,163 @@ static void compute_plates(model_t *m, const model_params *p, double mg)
         nbB = tile_neighbour(m, i, 2); nbT = tile_neighbour(m, i, 3);
         sL = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 0, gx0, gx1);
         sR = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 1, gx0, gx1);
-        c->plate[0] = nbL >= 0 ? c->tile[0] : (sL >= 0 ? (m->chunks[sL].tile[2] + gx0) / 2 : c->tile[0] - mg);
-        c->plate[2] = nbR >= 0 ? c->tile[2] : (sR >= 0 ? (gx1 + m->chunks[sR].tile[0]) / 2 : c->tile[2] + mg);
         if (p->chunk_mode == CHUNK_TILES) {
+            /* Shared seams stay on the tile grid so jigsaws line up.  Top and
+             * bottom of a row stay on the tile so the assembled strip is
+             * straight.  A free left/right edge shrink-wraps to the artwork
+             * plus margin when the cell is mostly empty (a sliver of a letter
+             * must not keep a tile-wide plate). */
+            const double inset = 1.0;
+            c->plate[0] = nbL >= 0 ? c->tile[0] :
+                (c->gmin[0] > c->tile[0] + inset ? c->gmin[0] - mg : c->tile[0] - mg);
+            c->plate[2] = nbR >= 0 ? c->tile[2] :
+                (c->gmax[0] < c->tile[2] - inset ? c->gmax[0] + mg : c->tile[2] + mg);
             c->plate[1] = nbB >= 0 ? c->tile[1] : c->tile[1] - mg;
             c->plate[3] = nbT >= 0 ? c->tile[3] : c->tile[3] + mg;
+            /* Alone in its column there is no strip to line up with, and with
+             * a margin wider than a tab the margin on both sides may not fit
+             * the bed: then shrink-wrap top and bottom like a free side edge. */
+            if (nbB < 0 && nbT < 0 && c->plate[3] - c->plate[1] > p->chunk_max_d + 1e-6) {
+                if (c->gmin[1] > c->tile[1] + inset) c->plate[1] = c->gmin[1] - mg;
+                if (c->gmax[1] < c->tile[3] - inset) c->plate[3] = c->gmax[1] + mg;
+            }
         } else {
+            c->plate[0] = nbL >= 0 ? c->tile[0] : (sL >= 0 ? (m->chunks[sL].tile[2] + gx0) / 2 : c->tile[0] - mg);
+            c->plate[2] = nbR >= 0 ? c->tile[2] : (sR >= 0 ? (gx1 + m->chunks[sR].tile[0]) / 2 : c->tile[2] + mg);
             c->plate[1] = nbB >= 0 ? c->tile[1] : ry0 - mg;
             c->plate[3] = nbT >= 0 ? c->tile[3] : ry1 + mg;
         }
+    }
+    /* Two tiles on an inside corner both grow into the empty cell.  Keep the
+     * margin of the upper (then left) piece; the other yields so they only
+     * meet at an edge.  Edge neighbours keep their jigsaw overlap.  (Object
+     * pieces of one row may overlap by design: their plates span the row.) */
+    if (p->chunk_mode != CHUNK_TILES) return;
+    for (i = 0; i < m->nchunks; i++) {
+        for (k = i + 1; k < m->nchunks; k++) {
+            chunk_t *a = &m->chunks[i], *b = &m->chunks[k];
+            double x0, y0, x1, y1;
+            if (!rects_overlap(a->plate, b->plate, &x0, &y0, &x1, &y1) || tiles_adjacent(a, b)) continue;
+            if (tile_precedes(a, b)) plate_yield_overlap(b, a);
+            else plate_yield_overlap(a, b);
+        }
+    }
+}
+
+static void region_add_rect(region_t *r, double x0, double y0, double x1, double y1);
+
+/* A model-space rectangle as a (normalised: one CCW contour) region in the chunk's local coords. */
+static void local_rect_region(region_t *out, const chunk_t *c, double x0, double y0, double x1, double y1)
+{
+    region_init(out);
+    region_add_rect(out, x0 - c->center[0], y0 - c->center[1], x1 - c->center[0], y1 - c->center[1]);
+}
+
+/* Union a model-space rectangle onto a plate in the chunk's local coords. */
+static void plate_union_rect(region_t *plate, const chunk_t *c, double x0, double y0, double x1, double y1)
+{
+    region_t extra, u;
+    const region_t *rs[2];
+    if (x1 - x0 < 0.5 || y1 - y0 < 0.5) return;
+    local_rect_region(&extra, c, x0, y0, x1, y1);
+    rs[0] = plate; rs[1] = &extra;
+    if (region_union(&u, rs, 2)) { region_free(plate); *plate = u; }
+    region_free(&extra);
+}
+
+/* Cut a model-space rectangle out of a plate in the chunk's local coords. */
+static void plate_subtract_rect(region_t *plate, const chunk_t *c, double x0, double y0, double x1, double y1)
+{
+    region_t extra, d;
+    const region_t *subs[1];
+    if (x1 - x0 < 0.5 || y1 - y0 < 0.5) return;
+    local_rect_region(&extra, c, x0, y0, x1, y1);
+    subs[0] = &extra;
+    if (region_subtract(&d, plate, subs, 1)) { region_free(plate); *plate = d; }
+    region_free(&extra);
+}
+
+/* When a neighbour shrink-wraps off part of the shared tile seam, grow this
+ * piece's plate across that gap so the assembled plates have no hole.  The
+ * flap covers the seam where this piece's own plate reaches it, as deep as
+ * a free edge (the margin) but never past the bed: the tab on the left and
+ * bottom already protrudes 12 mm, a flap only costs what exceeds that. */
+static void add_plate_flaps(region_t *plate, const model_t *m, const model_params *p, int i, double mg)
+{
+    int nb[4], side, g;
+    chunk_t *c = &m->chunks[i];
+    double room[2], extra[4];
+    if (p->chunk_mode != CHUNK_TILES || mg < 0.5) return;
+    chunk_neighbours(m, p, i, nb);
+    extra[0] = nb[0] >= 0 ? TAB_LEN_MAX : 0.0;
+    extra[1] = 0;
+    extra[2] = nb[2] >= 0 ? TAB_LEN_MAX : 0.0;
+    extra[3] = 0;
+    room[0] = p->chunk_max_w - (c->plate[2] - c->plate[0]) - extra[0];
+    room[1] = p->chunk_max_d - (c->plate[3] - c->plate[1]) - extra[2];
+    for (side = 0; side < 4; side++) {
+        const chunk_t *o;
+        double lo, hi, nlo, nhi, at, gaps[2][2], depth = mg;
+        int ng = 0;
+        if (nb[side] < 0) continue;
+        if (depth > extra[side] + room[side / 2]) depth = extra[side] + room[side / 2];
+        if (depth < 0.5) continue;
+        o = &m->chunks[nb[side]];
+        /* both plates must reach the seam, or the flap would hang in the air */
+        if (side >= 2) {
+            at = (side == 2) ? c->tile[1] : c->tile[3];
+            lo = c->tile[0] > c->plate[0] ? c->tile[0] : c->plate[0];
+            hi = c->tile[2] < c->plate[2] ? c->tile[2] : c->plate[2];
+            nlo = o->plate[0]; nhi = o->plate[2];
+            if (side == 2 && (o->plate[3] < at - 0.5 || c->plate[1] > at + 1e-6)) continue;
+            if (side == 3 && (o->plate[1] > at + 0.5 || c->plate[3] < at - 1e-6)) continue;
+        } else {
+            at = (side == 0) ? c->tile[0] : c->tile[2];
+            lo = c->tile[1] > c->plate[1] ? c->tile[1] : c->plate[1];
+            hi = c->tile[3] < c->plate[3] ? c->tile[3] : c->plate[3];
+            nlo = o->plate[1]; nhi = o->plate[3];
+            if (side == 0 && (o->plate[2] < at - 0.5 || c->plate[0] > at + 1e-6)) continue;
+            if (side == 1 && (o->plate[0] > at + 0.5 || c->plate[2] < at - 1e-6)) continue;
+        }
+        if (hi - lo < 0.5) continue;
+        if (nlo > lo + 0.5) { gaps[ng][0] = lo; gaps[ng][1] = nlo < hi ? nlo : hi; ng++; }
+        if (nhi < hi - 0.5) { gaps[ng][0] = nhi > lo ? nhi : lo; gaps[ng][1] = hi; ng++; }
+        for (g = 0; g < ng; g++) {
+            /* the flap reaches 0.5 mm into the plate: two regions that only
+             * touch along an edge do not reliably come out of the union as one */
+            double a = gaps[g][0], b = gaps[g][1], ov = 0.5;
+            if (side == 2) plate_union_rect(plate, c, a, at - depth, b, at + ov);
+            else if (side == 3) plate_union_rect(plate, c, a, at - ov, b, at + depth);
+            else if (side == 0) plate_union_rect(plate, c, at - depth, a, at + ov, b);
+            else plate_union_rect(plate, c, at - ov, a, at + depth, b);
+        }
+        if (ng && depth > extra[side]) {
+            room[side / 2] -= depth - extra[side];
+            extra[side] = depth;
+        }
+    }
+}
+
+/* Upper/left plate gives up the overlapping corner to a diagonal neighbour
+ * that kept its shrink-wrapped silhouette, so both stay rectangular in
+ * plate[] but the meshes do not occupy the same XY. */
+static void subtract_diagonal_claims(region_t *plate, const model_t *m, const model_params *p, int i)
+{
+    int k;
+    const chunk_t *c = &m->chunks[i];
+    if (p->chunk_mode != CHUNK_TILES) return;
+    for (k = 0; k < m->nchunks; k++) {
+        const chunk_t *o = &m->chunks[k];
+        double x0, y0, x1, y1;
+        if (k == i || !rects_overlap(c->plate, o->plate, &x0, &y0, &x1, &y1) || tiles_adjacent(c, o)) continue;
+        if (!tile_precedes(c, o)) continue;   /* the lower (then right) piece keeps the corner */
+        /* where the corner lies on this plate's own edge, cut past the edge:
+         * an edge shared exactly leaves slivers behind */
+        if (fabs(x0 - c->plate[0]) < 1e-9) x0 -= 1;
+        if (fabs(x1 - c->plate[2]) < 1e-9) x1 += 1;
+        if (fabs(y0 - c->plate[1]) < 1e-9) y0 -= 1;
+        if (fabs(y1 - c->plate[3]) < 1e-9) y1 += 1;
+        plate_subtract_rect(plate, c, x0, y0, x1, y1);
     }
 }
 
@@ -1741,14 +2007,31 @@ static void cut_chunk_grid(chunklist *out, const chunk_t *src, int nslots, const
     }
 }
 
-/* Cut a chunk (model coords) into a grid of equal tiles no larger than tw x td. */
-static void cut_chunk_into_tiles(chunklist *out, const chunk_t *src, int nslots, double tw, double td, int group)
+/* Room for a tile on the plate.  A grid tile carries the outer margin on one
+ * side of an axis and a dovetail tab (12 mm) on the other; the flap a
+ * shrink-wrapped neighbour leaves it takes only what room is left.  A lone
+ * tile on an axis has the margin on both sides.  Without joints every plate
+ * is the artwork plus the margin all round.  `room` is what a piece needs on
+ * top of its artwork along either axis. */
+typedef struct { double w, d, single_w, single_d, room; } tile_budget_t;
+
+/* Tiles along one axis: one when the extent fits with the margin on both
+ * sides, else grid tiles.  (With a margin wider than a tab the lone tile is
+ * the smaller of the two: an extent between them takes two tiles.) */
+static int tile_count(double extent, double tile, double single)
+{
+    int n;
+    if (extent <= single + 1e-9) return 1;
+    n = (int)ceil(extent / tile - 1e-9);
+    return n < 2 ? 2 : n;
+}
+
+/* Cut a chunk (model coords) into a grid of nx x ny equal tiles. */
+static void cut_chunk_into_grid(chunklist *out, const chunk_t *src, int nslots, int nx, int ny, int group)
 {
     double w = src->gmax[0] - src->gmin[0], d = src->gmax[1] - src->gmin[1];
-    int nx = (int)ceil(w / tw - 1e-9), ny = (int)ceil(d / td - 1e-9), i;
     double *xb, *yb;
-    if (nx < 1) nx = 1;
-    if (ny < 1) ny = 1;
+    int i;
     xb = (double *)malloc(sizeof(double) * (size_t)(nx + 1));
     yb = (double *)malloc(sizeof(double) * (size_t)(ny + 1));
     for (i = 0; i <= nx; i++) xb[i] = src->gmin[0] + w * i / nx;
@@ -1756,6 +2039,14 @@ static void cut_chunk_into_tiles(chunklist *out, const chunk_t *src, int nslots,
     cut_chunk_grid(out, src, nslots, xb, nx, yb, ny, group);
     free(xb);
     free(yb);
+}
+
+/* Cut a chunk (model coords) into a grid of equal tiles that fit the plate. */
+static void cut_chunk_into_tiles(chunklist *out, const chunk_t *src, int nslots, const tile_budget_t *tb, int group)
+{
+    cut_chunk_into_grid(out, src, nslots,
+                        tile_count(src->gmax[0] - src->gmin[0], tb->w, tb->single_w),
+                        tile_count(src->gmax[1] - src->gmin[1], tb->d, tb->single_d), group);
 }
 
 /* Length of geometry (normalised region, even-odd) crossed by the line x = pos (axis 0) or y = pos (axis 1). */
@@ -1794,7 +2085,7 @@ static int fits_upright(double w, double d, double W, double D)
 /* Split a piece made of several objects between the objects so that every part fits the
  * plate upright.  Tries a partition along x, then along y.  Returns the number of parts
  * (>= 2) with the cut positions in `bounds` (npart+1 values), or 0. */
-static int natural_split(const chunk_t *c, double W, double D, int *axis, double *bounds, int maxparts)
+static int natural_split(const chunk_t *c, const tile_budget_t *tb, int *axis, double *bounds, int maxparts)
 {
     int ncomp = 0, i, k, a;
     double *bb;
@@ -1806,7 +2097,9 @@ static int natural_split(const chunk_t *c, double W, double D, int *axis, double
     for (i = 0, k = 0; i < c->clip.n; i++)
         if (contour_area(&c->clip.c[i]) > 0) contour_bbox(&c->clip.c[i], &bb[4 * k++]);
     for (a = 0; a < 2; a++) {
-        /* components sorted along the axis */
+        /* components sorted along the axis; parts side by side get tabs between
+         * them and keep the row's margins, stacked parts the other way round */
+        double W = a == 0 ? tb->w : tb->single_w, D = a == 0 ? tb->single_d : tb->d;
         double cur[4];
         int nparts = 0, ok = 1, j;
         for (i = 0; i < ncomp; i++) order[i] = i;
@@ -1887,7 +2180,18 @@ static int natural_split(const chunk_t *c, double W, double D, int *axis, double
                         if (b2[2] > u[2]) u[2] = b2[2];
                         if (b2[3] > u[3]) u[3] = b2[3];
                     }
-                    if (!fits_upright(u[2] - u[0], u[3] - u[1], W, D)) valid = 0;
+                    {
+                        /* the part's tile reaches to the middle of the gap on either side */
+                        double lo = u[a], hi = u[2 + a], ext[2];
+                        if (part > 0 && prev_end < lo) lo = (prev_end + lo) / 2;
+                        if (part < ncut) {
+                            double ns = bb[4 * order[end + 1] + a];
+                            if (hi < ns) hi = (hi + ns) / 2;
+                        }
+                        ext[a] = hi - lo;
+                        ext[1 - a] = u[3 - a] - u[1 - a];
+                        if (!fits_upright(ext[0], ext[1], W, D)) valid = 0;
+                    }
                     if (u[2 + a] - u[a] < 0.2 * plate) valid = 0;
                     if (part > 0) {
                         double next_start = bb[4 * order[start] + a];
@@ -2089,15 +2393,26 @@ static int z_has_base(const model_params *p)
     return p->base_enabled && p->base_thickness > 0;
 }
 
+static void tile_budget(const model_params *p, double mg, tile_budget_t *b)
+{
+    double tab = (p->chunk_joints && z_has_base(p)) ? TAB_LEN_MAX : 0.0;
+    double side = tab > 0 ? tab : mg;
+    b->room = mg + side;
+    b->w = p->chunk_max_w - b->room;
+    b->d = p->chunk_max_d - b->room;
+    b->single_w = p->chunk_max_w - 2 * mg;
+    b->single_d = p->chunk_max_d - 2 * mg;
+    if (b->w < 5) b->w = 5;
+    if (b->d < 5) b->d = 5;
+}
+
 static void compute_chunks(model_t *m, const model_params *p)
 {
     chunklist list;
     int i, s;
     double mg = (p->base_enabled && p->base_thickness > 0 && p->base_margin > 0) ? p->base_margin : 0.0;
-    double tw = p->chunk_max_w - 2 * mg, td = p->chunk_max_d - 2 * mg;
-    if (p->chunk_joints && z_has_base(p)) { tw -= 12; td -= 12; }   /* room for the dovetail tabs */
-    if (tw < 5) tw = 5;
-    if (td < 5) td = 5;
+    tile_budget_t tb;
+    tile_budget(p, mg, &tb);
     memset(&list, 0, sizeof(list));
     model_free_chunks(m);
 
@@ -2106,7 +2421,7 @@ static void compute_chunks(model_t *m, const model_params *p)
         chunk_init(&whole);
         for (s = 0; s < m->nslots; s++) region_copy(&whole.slot_region[s], &m->slot_region[s]);
         region_copy(&whole.body_region, &m->footprint);
-        if (chunk_geometry_bbox(&whole)) cut_chunk_into_tiles(&list, &whole, m->nslots, tw, td, 0);
+        if (chunk_geometry_bbox(&whole)) cut_chunk_into_tiles(&list, &whole, m->nslots, &tb, 0);
         chunk_free(&whole);
         /* reading order: tile rows from the top */
         {
@@ -2118,7 +2433,7 @@ static void compute_chunks(model_t *m, const model_params *p)
         /* connected pieces of the union of every colour */
         region_t all;
         const region_t *rs[MAX_SLOTS];
-        int ncomp = 0, *parent, *group_of, ngroups = 0;
+        int *parent, *group_of, ngroups = 0;
         double *cbb;
         double gap = p->chunk_join_pct / 100.0 * m->logo_h;
         for (s = 0; s < m->nslots; s++) rs[s] = &m->slot_region[s];
@@ -2130,7 +2445,6 @@ static void compute_chunks(model_t *m, const model_params *p)
         for (i = 0; i < all.n; i++) {
             contour_bbox(&all.c[i], &cbb[4 * i]);
             parent[i] = i;
-            if (contour_area(&all.c[i]) > 0) ncomp++;
         }
         for (i = 0; i < all.n; i++) {
             if (contour_area(&all.c[i]) > 0) continue;
@@ -2251,15 +2565,13 @@ static void compute_chunks(model_t *m, const model_params *p)
         /* pieces too large for the plate that consist of several objects are split between them */
         {
             chunklist split;
-            double Wp = p->chunk_max_w - 2 * mg, Dp = p->chunk_max_d - 2 * mg;
-            if (p->chunk_joints && z_has_base(p)) { Wp -= 12; Dp -= 12; }
             memset(&split, 0, sizeof(split));
             for (i = 0; i < list.n; i++) {
                 chunk_t *c = &list.c[i];
                 double bounds[34];
                 int axis = 0, nparts = 0;
-                if (!fits_upright(c->gmax[0] - c->gmin[0], c->gmax[1] - c->gmin[1], Wp, Dp))
-                    nparts = natural_split(c, Wp, Dp, &axis, bounds, 32);
+                if (!fits_upright(c->gmax[0] - c->gmin[0], c->gmax[1] - c->gmin[1], tb.w, tb.single_d))
+                    nparts = natural_split(c, &tb, &axis, bounds, 32);
                 if (nparts >= 2) {
                     double other[2];
                     if (axis == 0) { other[0] = c->gmin[1]; other[1] = c->gmax[1]; cut_chunk_grid(&split, c, m->nslots, bounds, nparts, other, 1, c->group); }
@@ -2280,21 +2592,54 @@ static void compute_chunks(model_t *m, const model_params *p)
             if (s < m->chunk_fit_scale) m->chunk_fit_scale = s;
         }
         if (fabs(m->chunk_fit_scale - 1.0) < 1e-4) m->chunk_fit_scale = 1;
-        /* cut pieces that do not fit the plate at any rotation */
+        /* Cut pieces whose plate overflows the bed.  The plate of an object
+         * piece is its row strip: the row's height, half the gap to the next
+         * piece and a tab on the left, so it is measured, not estimated; and a
+         * cut moves the neighbours' seams, so look again until every piece
+         * fits or no cut can help. */
         if (p->chunk_oversize == 0) {
-            chunklist cut;
-            memset(&cut, 0, sizeof(cut));
-            for (i = 0; i < list.n; i++) {
-                chunk_t *c = &list.c[i];
-                if (model_fit_angle(c->gmax[0] - c->gmin[0] + 2 * mg, c->gmax[1] - c->gmin[1] + 2 * mg, p->chunk_max_w, p->chunk_max_d) < 0) {
-                    cut_chunk_into_tiles(&cut, c, m->nslots, tw, td, c->group);
-                    chunk_free(c);
-                } else {
-                    *chunklist_add(&cut) = *c;
+            int pass, ngroups = list.n, joints = p->chunk_joints && z_has_base(p);
+            double tab = joints ? TAB_LEN_MAX : 0.0;
+            for (pass = 0; pass < 8; pass++) {
+                chunklist cut;
+                int any = 0;
+                m->chunks = list.c;
+                m->nchunks = list.n;
+                if (joints && list.n > 1) compute_plates(m, p, mg);
+                memset(&cut, 0, sizeof(cut));
+                for (i = 0; i < list.n; i++) {
+                    chunk_t *c = &list.c[i];
+                    int nb[4] = {-1, -1, -1, -1}, nx = 1, ny = 1;
+                    double w, d, gw = c->gmax[0] - c->gmin[0], gd = c->gmax[1] - c->gmin[1];
+                    if (joints && list.n > 1) chunk_neighbours(m, p, i, nb);
+                    else { c->plate[0] = c->gmin[0] - mg; c->plate[1] = c->gmin[1] - mg; c->plate[2] = c->gmax[0] + mg; c->plate[3] = c->gmax[1] + mg; }
+                    w = c->plate[2] - c->plate[0] + (nb[0] >= 0 ? tab : 0);
+                    d = c->plate[3] - c->plate[1] + (nb[2] >= 0 ? tab : 0);
+                    if (model_fit_angle(w, d, p->chunk_max_w, p->chunk_max_d) < 0) {
+                        /* a cut helps along an axis where the piece's own artwork
+                         * sets the plate (not a taller neighbour in the row) */
+                        nx = tile_count(gw, tb.w, tb.single_w);
+                        ny = tile_count(gd, tb.d, tb.single_d);
+                        if (nx == 1 && w > p->chunk_max_w + 1e-6 && gw > 10) nx = 2;
+                        if (ny == 1 && d > p->chunk_max_d + 1e-6 && gd > 10 &&
+                            c->plate[1] >= c->gmin[1] - mg - 1e-6 && c->plate[3] <= c->gmax[1] + mg + 1e-6) ny = 2;
+                    }
+                    if (nx > 1 || ny > 1) {
+                        /* a grid of its own: the tiles must not reuse the grid indices of
+                         * the siblings a natural split gave this piece */
+                        cut_chunk_into_grid(&cut, c, m->nslots, nx, ny, ++ngroups);
+                        chunk_free(c);
+                        any = 1;
+                    } else {
+                        *chunklist_add(&cut) = *c;
+                    }
                 }
+                free(list.c);
+                list = cut;
+                m->chunks = NULL;
+                m->nchunks = 0;
+                if (!any) break;
             }
-            free(list.c);
-            list = cut;
         }
     }
     if (list.n == 0) {
@@ -2328,8 +2673,14 @@ static void compute_chunks(model_t *m, const model_params *p)
             c->center[0] = (c->gmin[0] + c->gmax[0]) / 2;
             c->center[1] = (c->gmin[1] + c->gmax[1]) / 2;
         }
-        for (s = 0; s < MAX_SLOTS; s++) region_translate(&c->slot_region[s], -c->center[0], -c->center[1]);
+        for (s = 0; s < MAX_SLOTS; s++) {
+            region_translate(&c->slot_region[s], -c->center[0], -c->center[1]);
+            region_free(&c->cut_slot_region[s]);
+            region_copy(&c->cut_slot_region[s], &c->slot_region[s]);
+        }
         region_translate(&c->body_region, -c->center[0], -c->center[1]);
+        region_free(&c->cut_body_region);
+        region_copy(&c->cut_body_region, &c->body_region);
     }
     m->chunks = list.c;
     m->nchunks = list.n;
@@ -2394,6 +2745,56 @@ static void mesh_append(mesh_t *dst, const mesh_t *src, double dx, double dy)
     free(map);
 }
 
+/* The artwork on a jigsaw plate, in local coords: the piece's own artwork as
+ * cut at the tile lines, plus what its tabs pick up from the neighbours,
+ * minus what its sockets cut away so nothing hangs over a hole.  Tabs and
+ * sockets are the plate's own quads, so the artwork follows the plate
+ * exactly; the neighbour's artwork is clipped to the tab with a convex clip,
+ * never a boolean of two large regions.  slot < 0 selects the body. */
+static void plate_artwork(region_t *out, const model_t *m, int i, int slot, const int *nb, const joint_quad *quads, int nq)
+{
+    const chunk_t *c = &m->chunks[i];
+    const region_t *own = slot < 0 ? &c->cut_body_region : &c->cut_slot_region[slot];
+    region_t parts[MAX_JOINT_QUADS], socks;
+    const region_t *rs[MAX_JOINT_QUADS + 1];
+    int k, np = 0, nsock = 0;
+    region_init(&socks);
+    for (k = 0; k < nq; k++) {
+        const joint_quad *jq = &quads[k];
+        const chunk_t *o;
+        const region_t *src;
+        double q[8];
+        int v;
+        if (jq->type == 2) { memcpy(q, jq->q, sizeof(q)); add_piece(&socks, q, 4); nsock++; continue; }
+        if (nb[jq->side] < 0) continue;
+        o = &m->chunks[nb[jq->side]];
+        src = slot < 0 ? &o->cut_body_region : &o->cut_slot_region[slot];
+        if (src->n == 0) continue;
+        for (v = 0; v < 4; v++) {   /* the tab in the neighbour's local frame */
+            q[2 * v] = jq->q[2 * v] + c->center[0] - o->center[0];
+            q[2 * v + 1] = jq->q[2 * v + 1] + c->center[1] - o->center[1];
+        }
+        if (!region_clip_convex(&parts[np], src, q, 4) || parts[np].n == 0) { region_free(&parts[np]); continue; }
+        region_translate(&parts[np], o->center[0] - c->center[0], o->center[1] - c->center[1]);
+        np++;
+    }
+    rs[0] = own;
+    for (k = 0; k < np; k++) rs[k + 1] = &parts[k];
+    if (np == 0 || !region_union(out, rs, np + 1)) region_copy(out, own);
+    for (k = 0; k < np; k++) region_free(&parts[k]);
+    if (nsock && out->n) {
+        region_t nsocks, cut;
+        const region_t *subs[1];
+        if (region_normalize(&nsocks, &socks, 0)) {
+            subs[0] = &nsocks;
+            if (region_subtract(&cut, out, subs, 1)) { region_free(out); *out = cut; }
+            region_free(&nsocks);
+        }
+    }
+    region_free(&socks);
+    region_clean(out, 1e-4);
+}
+
 int model_build_meshes(model_t *m, const model_params *p)
 {
     int i, s, k;
@@ -2418,7 +2819,14 @@ int model_build_meshes(model_t *m, const model_params *p)
         double rect[4];
         region_free(&c->base_region);
         mesh_free(&c->base_mesh);
-        for (s = 0; s < MAX_SLOTS; s++) mesh_free(&c->slot_mesh[s]);
+        /* the artwork as cut; jigsaw plates reshape it below */
+        for (s = 0; s < MAX_SLOTS; s++) {
+            mesh_free(&c->slot_mesh[s]);
+            region_free(&c->slot_region[s]);
+            region_copy(&c->slot_region[s], &c->cut_slot_region[s]);
+        }
+        region_free(&c->body_region);
+        region_copy(&c->body_region, &c->cut_body_region);
         for (k = 0; k < 3; k++) { c->bbox_min[k] = DBL_MAX; c->bbox_max[k] = -DBL_MAX; }
         c->ntris = 0;
         c->plate_first = c->plate_last = 1;
@@ -2450,6 +2858,13 @@ int model_build_meshes(model_t *m, const model_params *p)
                     } else {
                         js[side].s0 = (c->plate[0] > o->plate[0] ? c->plate[0] : o->plate[0]) - c->center[0];
                         js[side].s1 = (c->plate[2] < o->plate[2] ? c->plate[2] : o->plate[2]) - c->center[0];
+                    }
+                    {
+                        /* a tab no deeper than 40% of the narrower of the two plates: the same
+                         * cap on both sides of the seam, so tab and socket match */
+                        double ec = side < 2 ? c->plate[2] - c->plate[0] : c->plate[3] - c->plate[1];
+                        double eo = side < 2 ? o->plate[2] - o->plate[0] : o->plate[3] - o->plate[1];
+                        js[side].len_max = 0.4 * (ec < eo ? ec : eo);
                     }
                 }
                 c->plate_first = nb[0] < 0;
@@ -2495,7 +2910,20 @@ int model_build_meshes(model_t *m, const model_params *p)
                         }
                     }
                 }
-                plate_build(&c->base_region, rect, rad, js, p->joint_clearance, p->curve_tol_mm);
+                {
+                    joint_quad quads[MAX_JOINT_QUADS];
+                    int nq = plate_joint_quads(rect, js, p, quads);
+                    plate_build_quads(&c->base_region, rect, rad, quads, nq, p->curve_tol_mm);
+                    add_plate_flaps(&c->base_region, m, p, i, mg);
+                    subtract_diagonal_claims(&c->base_region, m, p, i);
+                    /* the artwork follows the tabs and sockets, not the straight tile cut */
+                    for (s = 0; s < m->nslots; s++) {
+                        region_free(&c->slot_region[s]);
+                        plate_artwork(&c->slot_region[s], m, i, s, nb, quads, nq);
+                    }
+                    region_free(&c->body_region);
+                    plate_artwork(&c->body_region, m, i, -1, nb, quads, nq);
+                }
             } else {
                 rect[0] = lminx - mg; rect[1] = lminy - mg; rect[2] = lmaxx + mg; rect[3] = lmaxy + mg;
                 rounded_rect(&c->base_region, rect[0], rect[1], rect[2], rect[3], p->base_radius, p->curve_tol_mm);
@@ -2590,9 +3018,11 @@ int model_build_meshes(model_t *m, const model_params *p)
             mesh_translate(&c->base_mesh, -cx, -cy);
             region_translate(&c->base_region, -cx, -cy);
             region_translate(&c->body_region, -cx, -cy);
+            region_translate(&c->cut_body_region, -cx, -cy);
             for (s = 0; s < MAX_SLOTS; s++) {
                 mesh_translate(&c->slot_mesh[s], -cx, -cy);
                 region_translate(&c->slot_region[s], -cx, -cy);
+                region_translate(&c->cut_slot_region[s], -cx, -cy);
             }
             c->bbox_min[0] -= cx; c->bbox_max[0] -= cx;
             c->bbox_min[1] -= cy; c->bbox_max[1] -= cy;
@@ -2847,16 +3277,16 @@ int model_build_coupon(const model_params *p, mesh_t *left, mesh_t *right, mesh_
     memset(jsR, 0, sizeof(jsR));
     /* one key from the bottom end when keys are on; the tabs take the rest */
     seam_key_layout(p, -D / 2, D / 2, W, W, 0, 1, 1, &sk);
-    jsL[1].type = 2; jsL[1].s0 = sk.t0; jsL[1].s1 = sk.t1;      /* left plate: sockets on its right edge */
-    jsR[0].type = 1; jsR[0].s0 = sk.t0; jsR[0].s1 = sk.t1;      /* right plate: tabs on its left edge */
+    jsL[1].type = 2; jsL[1].s0 = sk.t0; jsL[1].s1 = sk.t1; jsL[1].len_max = 0.4 * W;   /* left plate: sockets on its right edge */
+    jsR[0].type = 1; jsR[0].s0 = sk.t0; jsR[0].s1 = sk.t1; jsR[0].len_max = 0.4 * W;   /* right plate: tabs on its left edge */
     for (k = 0; k < sk.n; k++) {
         slL[nL].side = 1; slL[nL].c = sk.c[k]; slL[nL].len = sk.len + KEY_PARK + p->joint_clearance; nL++;
         slR[nR].side = 0; slR[nR].c = sk.c[k]; slR[nR].len = sk.len / 2 + KEY_PARK; nR++;
     }
-    plate_build(&reg, rectL, radL, jsL, p->joint_clearance, p->curve_tol_mm);
+    plate_build(&reg, rectL, radL, jsL, p);
     plate_mesh(left, &reg, rectL, slL, nL, t, p);
     region_free(&reg);
-    plate_build(&reg, rectR, radR, jsR, p->joint_clearance, p->curve_tol_mm);
+    plate_build(&reg, rectR, radR, jsR, p);
     plate_mesh(right, &reg, rectR, slR, nR, t, p);
     region_free(&reg);
     if (sk.n > 0) {

@@ -151,6 +151,18 @@ run many-objects        --split objects "$EX/many_colors.svg"
 run many-objects-tiles  --split objects --plate 60x60 --oversize cut "$EX/many_colors.svg"
 run many-objects-each   --split objects --plate 60x60 --oversize each --join 0 "$EX/many_colors.svg"
 run clip-tiles          --split tiles --plate 80x80 "$EX/clip_pattern.svg"
+# jigsaw plates must cut the logo, not only the base (wide wordmark)
+run intellistream-tiles --split tiles --plate 80x80 --width 400 "$EX/intellistream-logo.svg"
+# large margin + empty tiles must not grow two plates into the same hole
+run intellistream-wide  --split tiles --plate 270x270 --width 1500 --margin 50 "$EX/intellistream-logo.svg"
+# other silhouettes / sizes (closed meshes; layout rules live in test_plates)
+FIX=$HERE/fixtures
+convert l-shape         --split tiles --plate 140x140 --width 300 --margin 40 "$FIX/l_shape.svg"
+convert l-shape-small   --split tiles --plate 90x90 --width 240 --margin 12 "$FIX/l_shape.svg"
+convert sparse          --split tiles --plate 180x180 --width 400 --margin 50 "$FIX/sparse_squares.svg"
+convert circle-tiles    --split tiles --plate 90x90 --width 180 --margin 15 "$FIX/circle.svg"
+convert wide-bar        --split tiles --plate 200x200 --width 800 --margin 20 "$FIX/wide_bar.svg"
+convert blobs           --split tiles --plate 150x150 --width 400 --margin 25 "$FIX/three_blobs.svg"
 # sliding dovetail keys: slots in every plate, the keys in a file of their own
 run arcs-keys           --split objects --join 0 --plate 100x80 --joints keys "$EX/evenodd_arcs.svg"
 check3mf "$OUT/arcs-keys_keys.3mf"
@@ -164,6 +176,14 @@ run simple-tiles-keys   --split tiles --plate 80x80 --width 220 --joints keys "$
 check3mf "$OUT/simple-tiles-keys_keys.3mf"
 run simple-tiles-thin   --split tiles --plate 80x80 --width 220 --joints keys --base 2 "$EX/simple.svg"
 [ -e "$OUT/simple-tiles-thin_keys.3mf" ] && fails "a 2 mm plate must not get keys"
+# chosen tab width and spacing: many small tabs the artwork follows, and one
+# wide tab per seam beside the keys
+run intellistream-tabs  --split tiles --plate 80x80 --width 400 --joint-width 8 --joint-spacing 20 "$EX/intellistream-logo.svg"
+run simple-tiles-wide   --split tiles --plate 80x80 --width 220 --joints keys --joint-width 30 --joint-spacing 100 "$EX/simple.svg"
+"$BIN" --export-test "$OUT/jointtest-wide.stl" --joint-width 24 > /dev/null || fails "--export-test with --joint-width"
+checkstl "$OUT/jointtest-wide.stl"
+"$BIN" --info --joint-spacing 0 "$EX/simple.svg" > /dev/null 2>&1 && fails "--joint-spacing 0 should be rejected"
+"$BIN" --info --joint-width 1 "$EX/simple.svg" > /dev/null 2>&1 && fails "--joint-width 1 should be rejected"
 # the joint test print, with and without keys
 "$BIN" --export-test "$OUT/jointtest.3mf" --joints keys > /dev/null || fails "--export-test 3mf"
 check3mf "$OUT/jointtest.3mf"

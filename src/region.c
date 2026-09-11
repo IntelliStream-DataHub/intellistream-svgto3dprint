@@ -342,6 +342,79 @@ int region_clip_rect(region_t *out, const region_t *in, double x0, double y0, do
     return 1;
 }
 
+/* Keep the part of a polygon on the left of the directed line a->b. */
+static int sh_clip_halfplane(const double *in, int nin, double *out, double ax, double ay, double bx, double by)
+{
+    int nout = 0, i;
+    double ex = bx - ax, ey = by - ay;
+    for (i = 0; i < nin; i++) {
+        double cx = in[2 * i], cy = in[2 * i + 1];
+        int j = (i + 1) % nin;
+        double nx = in[2 * j], ny = in[2 * j + 1];
+        double dc = ex * (cy - ay) - ey * (cx - ax), dn = ex * (ny - ay) - ey * (nx - ax);
+        int cin = dc >= 0, nin_ = dn >= 0;
+        if (cin) { out[2 * nout] = cx; out[2 * nout + 1] = cy; nout++; }
+        if (cin != nin_) {
+            double t = dc / (dc - dn);
+            out[2 * nout] = cx + t * (nx - cx);
+            out[2 * nout + 1] = cy + t * (ny - cy);
+            nout++;
+        }
+    }
+    return nout;
+}
+
+int region_clip_convex(region_t *out, const region_t *in, const double *poly, int n)
+{
+    int i, k, cap = 0;
+    double *buf = NULL, *tmp = NULL, *ccw;
+    double px0 = DBL_MAX, py0 = DBL_MAX, px1 = -DBL_MAX, py1 = -DBL_MAX, area = 0;
+    region_t raw;
+    region_init(out);
+    if (n < 3 || in->n == 0) return 1;
+    for (k = 0; k < n; k++) {
+        int j = (k + 1) % n;
+        area += poly[2 * k] * poly[2 * j + 1] - poly[2 * j] * poly[2 * k + 1];
+        if (poly[2 * k] < px0) px0 = poly[2 * k];
+        if (poly[2 * k] > px1) px1 = poly[2 * k];
+        if (poly[2 * k + 1] < py0) py0 = poly[2 * k + 1];
+        if (poly[2 * k + 1] > py1) py1 = poly[2 * k + 1];
+    }
+    if (fabs(area) < 1e-12 || in->maxx < px0 || in->minx > px1 || in->maxy < py0 || in->miny > py1) return 1;
+    ccw = (double *)malloc(sizeof(double) * 2 * (size_t)n);
+    if (!ccw) return 0;
+    for (k = 0; k < n; k++) {
+        int src = area > 0 ? k : n - 1 - k;
+        ccw[2 * k] = poly[2 * src];
+        ccw[2 * k + 1] = poly[2 * src + 1];
+    }
+    region_init(&raw);
+    for (i = 0; i < in->n; i++) {
+        const contour_t *c = &in->c[i];
+        int nv = c->n, need;
+        need = nv + n + 8;
+        if (need > cap) { cap = need; buf = (double *)realloc(buf, sizeof(double) * 2 * (size_t)cap); tmp = (double *)realloc(tmp, sizeof(double) * 2 * (size_t)cap); }
+        memcpy(buf, c->pts, sizeof(double) * 2 * (size_t)nv);
+        for (k = 0; k < n && nv >= 3; k++) {
+            int j = (k + 1) % n, cn;
+            /* one pass can at most double the vertex count */
+            if (2 * nv + 2 > cap) { cap = 2 * nv + 2; buf = (double *)realloc(buf, sizeof(double) * 2 * (size_t)cap); tmp = (double *)realloc(tmp, sizeof(double) * 2 * (size_t)cap); }
+            cn = sh_clip_halfplane(buf, nv, tmp, ccw[2 * k], ccw[2 * k + 1], ccw[2 * j], ccw[2 * j + 1]);
+            memcpy(buf, tmp, sizeof(double) * 2 * (size_t)cn);
+            nv = cn;
+        }
+        if (nv >= 3) region_add_contour(&raw, buf, nv);
+    }
+    free(buf);
+    free(tmp);
+    free(ccw);
+    if (raw.n == 0) return 1;
+    /* same bridges and cut holes as the rectangle clip: normalise them away */
+    if (!region_normalize(out, &raw, 0)) { *out = raw; return 1; }
+    region_free(&raw);
+    return 1;
+}
+
 int region_triangulate(const region_t *r, double **verts, int *nverts, int **tris, int *ntris)
 {
     TESStesselator *t;

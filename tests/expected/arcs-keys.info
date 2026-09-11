@@ -8,7 +8,7 @@ pieces: 2 (plate 96 x 76 mm)  every piece fits uncut up to 69% of this size  all
 plates: 2 (printer plate 100 x 80 mm, 8 mm between pieces)
   chunk01: 73.5 x 96.0 mm,  turned 90 deg on export  scaled to 69% on export  plate 1 at 50.0,40.0
   chunk02: 72.3 x 96.0 mm,  turned 90 deg on export  scaled to 69% on export  plate 2 at 50.0,40.0
-slot 1: #333333  shapes 1  area 7823.1 mm^2  z 3.00-5.00 mm  volume 29260.0 mm^3  (body)
+slot 1: #333333  shapes 1  area 7823.1 mm^2  z 3.00-5.00 mm  volume 29247.3 mm^3  (body)
 slot 2: #2E86DE  shapes 1  area 4596.2 mm^2  z 5.00-5.20 mm  volume 919.2 mm^3
 slot 3: #F1C40F  shapes 1  area 1029.5 mm^2  z 5.00-5.20 mm  volume 205.9 mm^3
 slot 4: #E74C3C  shapes 1  area 696.1 mm^2  z 5.00-5.20 mm  volume 139.2 mm^3

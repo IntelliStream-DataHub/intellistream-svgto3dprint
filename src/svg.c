@@ -948,7 +948,7 @@ static void parse_path_data(ctx_t *c, const xform *m, const char *d)
 
     while (*s) {
         double v[7];
-        int n = 0, need;
+        int need;
         s = skip_space(s);
         if (*s == ',') { s++; continue; }
         if (!*s) break;
@@ -980,7 +980,6 @@ static void parse_path_data(ctx_t *c, const xform *m, const char *d)
                 v[i] = strtod(s, &end);
                 if (end == s) return;
                 s = end;
-                n++;
             }
         }
         switch (cmd) {

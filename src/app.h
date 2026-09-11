@@ -10,6 +10,11 @@ typedef struct {
     svg_doc *doc;
     model_params params;
     model_t model;
+    /* the colour slots the per-slot params (heights, visibility, merges, base
+     * colour) refer to: app_rebuild() remaps them by colour when a re-layout
+     * changes the slots, and an undo in the GUI restores them with the params */
+    int pslots_n;
+    unsigned pslots_rgb[MAX_SLOTS];
     int width_from_cli;         /* the user gave an explicit size */
     char last_error[512];
     const char *screenshot_path; /* GUI: save a frame to this PPM file and exit */

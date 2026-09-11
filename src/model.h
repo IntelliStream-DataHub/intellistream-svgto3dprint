@@ -43,6 +43,10 @@ typedef struct {
     double plate_pos[2];        /* centre of its exported footprint on that plate (mm from the front-left corner) */
     region_t slot_region[MAX_SLOTS];    /* local coords (centred on the chunk) */
     region_t body_region;               /* layered mode: union of all colours */
+    /* the artwork as cut at the tile lines; slot_region / body_region are
+     * derived from these on every mesh build (jigsaw plates reshape them) */
+    region_t cut_slot_region[MAX_SLOTS];
+    region_t cut_body_region;
     region_t base_region;
     mesh_t slot_mesh[MAX_SLOTS];
     mesh_t base_mesh;
@@ -105,6 +109,8 @@ typedef struct {
     double plate_padding;       /* mm kept free around a one-piece model when fitting it to the plate */
     int chunk_joints;           /* joint_style_t: how neighbouring base plates are joined */
     double joint_clearance;     /* mm of play between tab and socket, and around a key */
+    double joint_spacing;       /* wanted distance between dovetail tab centres along a seam (mm) */
+    double joint_width;         /* width of a dovetail tab at its widest (mm), 0 = sized to the seam */
     /* layered colours: one colour forms the whole logo body, the others are
      * thin layers on top of it (raised) or inlaid flush with its top */
     int layered;
