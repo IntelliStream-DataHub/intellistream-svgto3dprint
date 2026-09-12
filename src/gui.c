@@ -1867,8 +1867,9 @@ int gui_main(app_state *a)
         }
         nk_input_end(g.ctx);
 
-        /* pieces must fit the plate minus its padding */
+        /* pieces must fit the plate minus its padding, which the plate shows */
         app_set_plate(a, g.view.bed_w, g.view.bed_d);
+        g.view.bed_pad = (float)a->params.plate_padding;
         /* the piece tabs drive the single-piece preview */
         if (g.tab == 2 && g.sel_piece >= 0 && g.sel_piece < a->model.nchunks) a->params.chunk_view = g.sel_piece + 1;
         else a->params.chunk_view = 0;

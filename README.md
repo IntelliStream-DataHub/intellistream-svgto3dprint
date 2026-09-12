@@ -111,7 +111,8 @@ which is what `tests/compare_info.py` checks.
   flush); untick it for colours side by side.
 * **Build plate**: plate size (presets included), grid, and the plate padding:
   the space kept free on the plate, half on each side. Pieces are cut to the
-  plate minus the padding; a one-piece model is refitted to it.
+  plate minus the padding; a one-piece model is refitted to it. A dashed
+  outline on the plate shows the area inside the padding.
 * **View**: camera presets (`0/1/3/7/9` iso/front/right/top/bottom — bottom
   shows the key slots), perspective/orthographic toggle, dimensions,
   outlines, and a two-point measuring tool.
