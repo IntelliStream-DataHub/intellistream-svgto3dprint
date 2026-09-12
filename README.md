@@ -109,8 +109,9 @@ which is what `tests/compare_info.py` checks.
 * **Colours**: swatch, area share, print toggle, merge, and height per slot.
   *Layered* stacks a body colour with thinner layers on top (or inlaid
   flush); untick it for colours side by side.
-* **Build plate**: plate size (presets included), grid, and the padding used
-  when fitting a one-piece model; changing the padding refits the model.
+* **Build plate**: plate size (presets included), grid, and the plate padding:
+  the space kept free on the plate, half on each side. Pieces are cut to the
+  plate minus the padding; a one-piece model is refitted to it.
 * **View**: camera presets (`0/1/3/7/9` iso/front/right/top/bottom — bottom
   shows the key slots), perspective/orthographic toggle, dimensions,
   outlines, and a two-point measuring tool.
@@ -128,7 +129,7 @@ is beneath it, so colours never overlap in the print.
 
     intellistream-svgto3dprint --info logo.svg
     intellistream-svgto3dprint --export logo.3mf --width 150 --base 2 --margin 3 logo.svg
-    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg
+    intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --plate 250x250 --padding 20 logo.svg
     intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --joints keys logo.svg
     intellistream-svgto3dprint --export big.3mf --width 1200 --split tiles --joint-width 16 --joint-spacing 40 logo.svg
     intellistream-svgto3dprint --export big.3mf --width 800 --split objects --joint-offset 25 logo.svg

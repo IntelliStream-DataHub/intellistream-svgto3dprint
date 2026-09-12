@@ -143,47 +143,49 @@ run simple-fit          --fit-plate --plate 100x100 "$EX/simple.svg"
 run simple-tolerance    --tolerance 0.2 "$EX/simple.svg"
 
 # --- splitting into pieces --------------------------------------------------
-run simple-tiles        --split tiles --plate 60x60 "$EX/simple.svg"
-run simple-tiles-loose  --split tiles --plate 60x60 --no-joints "$EX/simple.svg"
-run simple-tiles-keep   --split tiles --plate 60x60 --oversize keep "$EX/simple.svg"
-run simple-tiles-fit    --split tiles --plate 120x120 --fit-plate "$EX/simple.svg"
+run simple-tiles        --split tiles --plate 60x60 --padding 4 "$EX/simple.svg"
+run simple-tiles-loose  --split tiles --plate 60x60 --padding 4 --no-joints "$EX/simple.svg"
+run simple-tiles-keep   --split tiles --plate 60x60 --padding 4 --oversize keep "$EX/simple.svg"
+run simple-tiles-fit    --split tiles --plate 120x120 --padding 4 --fit-plate "$EX/simple.svg"
+# plate padding: tiles are cut to the plate minus the padding
+run simple-tiles-padded --split tiles --plate 120x120 --padding 40 "$EX/simple.svg"
 run many-objects        --split objects "$EX/many_colors.svg"
-run many-objects-tiles  --split objects --plate 60x60 --oversize cut "$EX/many_colors.svg"
-run many-objects-each   --split objects --plate 60x60 --oversize each --join 0 "$EX/many_colors.svg"
-run clip-tiles          --split tiles --plate 80x80 "$EX/clip_pattern.svg"
+run many-objects-tiles  --split objects --plate 60x60 --padding 4 --oversize cut "$EX/many_colors.svg"
+run many-objects-each   --split objects --plate 60x60 --padding 4 --oversize each --join 0 "$EX/many_colors.svg"
+run clip-tiles          --split tiles --plate 80x80 --padding 4 "$EX/clip_pattern.svg"
 # jigsaw plates must cut the logo, not only the base (wide wordmark)
-run intellistream-tiles --split tiles --plate 80x80 --width 400 "$EX/intellistream-logo.svg"
+run intellistream-tiles --split tiles --plate 80x80 --padding 4 --width 400 "$EX/intellistream-logo.svg"
 # large margin + empty tiles must not grow two plates into the same hole
-run intellistream-wide  --split tiles --plate 270x270 --width 1500 --margin 50 "$EX/intellistream-logo.svg"
+run intellistream-wide  --split tiles --plate 270x270 --padding 4 --width 1500 --margin 50 "$EX/intellistream-logo.svg"
 # a margin wider than the gap to the line below: the strips must not overlap
 run intellistream-rows  --split objects --width 800 --margin 10 "$EX/intellistream-logo.svg"
 # tabs slid along their seams, each seam giving what its end tabs can spare
 run intellistream-offset --split objects --width 400 --joint-offset 25 "$EX/intellistream-logo.svg"
 # other silhouettes / sizes (closed meshes; layout rules live in test_plates)
 FIX=$HERE/fixtures
-convert l-shape         --split tiles --plate 140x140 --width 300 --margin 40 "$FIX/l_shape.svg"
-convert l-shape-small   --split tiles --plate 90x90 --width 240 --margin 12 "$FIX/l_shape.svg"
-convert sparse          --split tiles --plate 180x180 --width 400 --margin 50 "$FIX/sparse_squares.svg"
-convert circle-tiles    --split tiles --plate 90x90 --width 180 --margin 15 "$FIX/circle.svg"
-convert wide-bar        --split tiles --plate 200x200 --width 800 --margin 20 "$FIX/wide_bar.svg"
-convert blobs           --split tiles --plate 150x150 --width 400 --margin 25 "$FIX/three_blobs.svg"
+convert l-shape         --split tiles --plate 140x140 --padding 4 --width 300 --margin 40 "$FIX/l_shape.svg"
+convert l-shape-small   --split tiles --plate 90x90 --padding 4 --width 240 --margin 12 "$FIX/l_shape.svg"
+convert sparse          --split tiles --plate 180x180 --padding 4 --width 400 --margin 50 "$FIX/sparse_squares.svg"
+convert circle-tiles    --split tiles --plate 90x90 --padding 4 --width 180 --margin 15 "$FIX/circle.svg"
+convert wide-bar        --split tiles --plate 200x200 --padding 4 --width 800 --margin 20 "$FIX/wide_bar.svg"
+convert blobs           --split tiles --plate 150x150 --padding 4 --width 400 --margin 25 "$FIX/three_blobs.svg"
 # sliding dovetail keys: slots in every plate, the keys in a file of their own
-run arcs-keys           --split objects --join 0 --plate 100x80 --joints keys "$EX/evenodd_arcs.svg"
+run arcs-keys           --split objects --join 0 --plate 100x80 --padding 4 --joints keys "$EX/evenodd_arcs.svg"
 check3mf "$OUT/arcs-keys_keys.3mf"
 checkstl "$OUT/arcs-keys_keys.stl"
 [ -e "$OUT/arcs-keys_keys.3mf" ] || fails "no arcs-keys_keys.3mf written"
 # all in one 3MF: the two pieces and their two keys as four objects
-"$BIN" --export "$OUT/arcs-keys-one.3mf" --split objects --join 0 --plate 100x80 --joints keys --single-file "$EX/evenodd_arcs.svg" > /dev/null || fails "--single-file with keys"
+"$BIN" --export "$OUT/arcs-keys-one.3mf" --split objects --join 0 --plate 100x80 --padding 4 --joints keys --single-file "$EX/evenodd_arcs.svg" > /dev/null || fails "--single-file with keys"
 [ -e "$OUT/arcs-keys-one_keys.3mf" ] && fails "the all-in-one 3MF must hold the keys itself"
 res=$(check3mf "$OUT/arcs-keys-one.3mf"); echo "$res"; echo "$res" | grep -q "4 build item" || fails "arcs-keys-one.3mf should hold 4 objects (2 pieces + 2 keys)"
-run simple-tiles-keys   --split tiles --plate 80x80 --width 220 --joints keys "$EX/simple.svg"
+run simple-tiles-keys   --split tiles --plate 80x80 --padding 4 --width 220 --joints keys "$EX/simple.svg"
 check3mf "$OUT/simple-tiles-keys_keys.3mf"
-run simple-tiles-thin   --split tiles --plate 80x80 --width 220 --joints keys --base 2 "$EX/simple.svg"
+run simple-tiles-thin   --split tiles --plate 80x80 --padding 4 --width 220 --joints keys --base 2 "$EX/simple.svg"
 [ -e "$OUT/simple-tiles-thin_keys.3mf" ] && fails "a 2 mm plate must not get keys"
 # chosen tab width and spacing: many small tabs the artwork follows, and one
 # wide tab per seam beside the keys
-run intellistream-tabs  --split tiles --plate 80x80 --width 400 --joint-width 8 --joint-spacing 20 "$EX/intellistream-logo.svg"
-run simple-tiles-wide   --split tiles --plate 80x80 --width 220 --joints keys --joint-width 30 --joint-spacing 100 "$EX/simple.svg"
+run intellistream-tabs  --split tiles --plate 80x80 --padding 4 --width 400 --joint-width 8 --joint-spacing 20 "$EX/intellistream-logo.svg"
+run simple-tiles-wide   --split tiles --plate 80x80 --padding 4 --width 220 --joints keys --joint-width 30 --joint-spacing 100 "$EX/simple.svg"
 "$BIN" --export-test "$OUT/jointtest-wide.stl" --joint-width 24 > /dev/null || fails "--export-test with --joint-width"
 checkstl "$OUT/jointtest-wide.stl"
 "$BIN" --info --joint-spacing 0 "$EX/simple.svg" > /dev/null 2>&1 && fails "--joint-spacing 0 should be rejected"
@@ -197,21 +199,24 @@ checkstl "$OUT/jointtest.stl"
 checkstl "$OUT/jointtest-jigsaw.stl"
 "$BIN" --export-test "$OUT/jointtest-none.stl" --joints none > /dev/null 2>&1 && fails "--export-test without joints should fail"
 # every piece in one 3MF (assembled layout)
-"$BIN" --export "$OUT/simple-onefile.3mf" --split tiles --plate 60x60 --single-file "$EX/simple.svg" > /dev/null || fails "--single-file"
+"$BIN" --export "$OUT/simple-onefile.3mf" --split tiles --plate 60x60 --padding 4 --single-file "$EX/simple.svg" > /dev/null || fails "--single-file"
 check3mf "$OUT/simple-onefile.3mf"
-"$BIN" --export "$OUT/arcs-onefile.3mf" --split objects --join 0 --plate 100x80 --single-file "$EX/evenodd_arcs.svg" > /dev/null || fails "--single-file objects"
+"$BIN" --export "$OUT/arcs-onefile.3mf" --split objects --join 0 --plate 100x80 --padding 4 --single-file "$EX/evenodd_arcs.svg" > /dev/null || fails "--single-file objects"
 check3mf "$OUT/arcs-onefile.3mf"
 
 # --- pieces arranged on printer plates ---------------------------------------
 # one file per plate: every piece on its plate, none overlapping (3MF and STL)
-info many-plates --split objects --plate 60x60 --oversize cut --spacing 5 "$EX/many_colors.svg"
-"$BIN" --export "$OUT/many-plates.3mf" --per-plate --split objects --plate 60x60 --oversize cut --spacing 5 "$EX/many_colors.svg" > /dev/null || fails "--per-plate 3mf"
+info many-plates --split objects --plate 60x60 --padding 4 --oversize cut --spacing 5 "$EX/many_colors.svg"
+"$BIN" --export "$OUT/many-plates.3mf" --per-plate --split objects --plate 60x60 --padding 4 --oversize cut --spacing 5 "$EX/many_colors.svg" > /dev/null || fails "--per-plate 3mf"
 CHECK3MF_ARGS="--bed 60x60" check3mf "$OUT/many-plates_plate"*.3mf
-"$BIN" --export "$OUT/many-plates.stl" --per-plate --split objects --plate 60x60 --oversize cut --spacing 5 "$EX/many_colors.svg" > /dev/null || fails "--per-plate stl"
+"$BIN" --export "$OUT/many-plates.stl" --per-plate --split objects --plate 60x60 --padding 4 --oversize cut --spacing 5 "$EX/many_colors.svg" > /dev/null || fails "--per-plate stl"
 checkstl "$OUT/many-plates_plate"*.stl
-info arcs-plates --split objects --join 0 --plate 100x80 "$EX/evenodd_arcs.svg"
-"$BIN" --export "$OUT/arcs-plates.3mf" --per-plate --split objects --join 0 --plate 100x80 "$EX/evenodd_arcs.svg" > /dev/null || fails "--per-plate arcs"
+info arcs-plates --split objects --join 0 --plate 100x80 --padding 4 "$EX/evenodd_arcs.svg"
+"$BIN" --export "$OUT/arcs-plates.3mf" --per-plate --split objects --join 0 --plate 100x80 --padding 4 "$EX/evenodd_arcs.svg" > /dev/null || fails "--per-plate arcs"
 CHECK3MF_ARGS="--bed 100x80" check3mf "$OUT/arcs-plates.3mf" "$OUT/arcs-plates_plate"*.3mf
+# padded pieces still sit within the printer plate
+"$BIN" --export "$OUT/padded-plates.3mf" --per-plate --split objects --join 0 --plate 100x80 --padding 30 "$EX/evenodd_arcs.svg" > /dev/null || fails "--per-plate with padding"
+CHECK3MF_ARGS="--bed 100x80" check3mf "$OUT/padded-plates_plate"*.3mf
 # --- command line behaviour -------------------------------------------------
 "$BIN" --help > /dev/null || fails "--help should exit 0"
 "$BIN" --bogus "$EX/simple.svg" > /dev/null 2>&1 && fails "unknown option should fail"

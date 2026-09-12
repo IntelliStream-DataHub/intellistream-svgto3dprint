@@ -3,22 +3,22 @@ paths: 183  shapes: 77  colours in SVG: 4  slots: 4  materials: 5/8
 logo size: 780.00 x 182.98 mm  (scale 2.69620 mm/unit)
 model bbox: 800.00 x 202.98 x 4.20 mm
 base: #202020  2.0 mm thick  242718 mm^3
-pieces: 14 (plate 240 x 240 mm)  every piece fits uncut up to 142% of this size
-plates: 6 (printer plate 244 x 244 mm, 8 mm between pieces)
-  chunk01: 29.2 x 137.7 mm,  plate 1 at 16.6,70.9
-  chunk02: 104.6 x 137.7 mm,  plate 1 at 91.5,70.9
-  chunk03: 58.2 x 137.7 mm,  plate 1 at 180.9,70.9
-  chunk04: 99.8 x 137.7 mm,  plate 2 at 51.9,70.9
-  chunk05: 37.3 x 137.7 mm,  plate 2 at 128.5,70.9
-  chunk06: 39.1 x 137.7 mm,  plate 2 at 174.7,70.9
-  chunk07: 39.4 x 137.7 mm,  plate 2 at 222.0,70.9
-  chunk08: 85.7 x 137.7 mm,  plate 3 at 44.9,70.9
-  chunk09: 55.9 x 137.7 mm,  plate 4 at 30.0,70.9
-  chunk10: 53.6 x 137.7 mm,  plate 3 at 122.6,70.9
-  chunk11: 98.3 x 137.7 mm,  plate 4 at 115.1,70.9
-  chunk12: 101.9 x 137.7 mm,  plate 5 at 52.9,70.9
-  chunk13: 136.3 x 137.7 mm,  plate 6 at 70.1,70.9
-  chunk14: 173.8 x 65.2 mm,  plate 1 at 88.9,180.4
+pieces: 14 (plate 210 x 210 mm)  every piece fits uncut up to 124% of this size
+plates: 7 (printer plate 250 x 250 mm, 8 mm between pieces)
+  chunk01: 29.2 x 137.7 mm,  plate 1 at 34.6,88.9
+  chunk02: 104.6 x 137.7 mm,  plate 1 at 109.5,88.9
+  chunk03: 58.2 x 137.7 mm,  plate 1 at 198.9,88.9
+  chunk04: 99.8 x 137.7 mm,  plate 2 at 69.9,88.9
+  chunk05: 37.3 x 137.7 mm,  plate 2 at 146.5,88.9
+  chunk06: 39.1 x 137.7 mm,  plate 2 at 192.7,88.9
+  chunk07: 39.4 x 137.7 mm,  plate 3 at 39.7,88.9
+  chunk08: 85.7 x 137.7 mm,  plate 3 at 110.3,88.9
+  chunk09: 55.9 x 137.7 mm,  plate 4 at 48.0,88.9
+  chunk10: 53.6 x 137.7 mm,  plate 3 at 188.0,88.9
+  chunk11: 98.3 x 137.7 mm,  plate 4 at 133.1,88.9
+  chunk12: 101.9 x 137.7 mm,  plate 5 at 70.9,88.9
+  chunk13: 136.3 x 137.7 mm,  plate 6 at 88.1,88.9
+  chunk14: 173.8 x 65.2 mm,  plate 7 at 106.9,52.6
 slot 1: #105984  shapes 20  area 23531.4 mm^2  z 2.00-4.00 mm  volume 58952.5 mm^3  (body)
 slot 2: #005984  shapes 2  area 5474.9 mm^2  z 4.00-4.20 mm  volume 1095.0 mm^3
 slot 3: #98BBC8  shapes 22  area 339.6 mm^2  z 4.00-4.20 mm  volume 67.9 mm^3

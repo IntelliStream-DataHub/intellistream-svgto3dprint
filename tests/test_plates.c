@@ -379,8 +379,8 @@ static int run_case(const char *name, const char *svg, double width, double marg
     a.params.joint_spacing = case_joint_spacing;
     a.params.joint_offset = case_joint_offset;
     if (mode == CHUNK_OBJECTS) a.params.chunk_oversize = 0;   /* cut: pieces must fit as cut, never shrunk */
-    a.params.chunk_max_w = plate - 4;
-    a.params.chunk_max_d = plate - 4;
+    a.params.plate_padding = 4;   /* the clearance these plate sizes were chosen for */
+    app_set_plate(&a, plate, plate);
     if (!app_load_svg(&a, svg)) {
         failf(__LINE__, "%s: load failed: %s", tag, a.last_error);
         app_free(&a);

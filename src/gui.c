@@ -117,14 +117,14 @@ static void load_file(gui_t *g, const char *path)
 {
     panel_undo_state keep;
     if (!path || !path[0]) return;
-    /* a new logo starts from defaults; printer settings (plate, grid) are kept.
+    /* a new logo starts from defaults; printer settings (plate, padding, grid) are kept.
      * A file that does not load keeps the current logo, its settings and
      * their undo history. */
     panel_capture(g, &keep);
     model_params_default(&g->app->params);
     g->app->pslots_n = 0;
-    g->app->params.chunk_max_w = g->view.bed_w - 4;
-    g->app->params.chunk_max_d = g->view.bed_d - 4;
+    g->app->params.plate_padding = keep.params.plate_padding;
+    app_set_plate(g->app, g->view.bed_w, g->view.bed_d);
     g->same_height = 1.0f;
     g->stagger_first = 0.6f;
     g->stagger_step = 0.2f;
@@ -997,9 +997,9 @@ static void panel(gui_t *g, int x, int y, int w, int h)
             nk_property_float(ctx, "#Grid step (mm)", 1, &g->view.grid_step, 100, 1, 0.2f);
             {
                 double pad = p->plate_padding;
-                nk_property_double(ctx, "#One-piece padding (mm)", 0, &p->plate_padding, 200, 5, 0.5f);
-                /* the padding only feeds the fit, so refit a one-piece model as it
-                 * changes; otherwise the field does nothing until "Fit to plate" */
+                nk_property_double(ctx, "#Plate padding (mm)", 0, &p->plate_padding, 200, 5, 0.5f);
+                /* pieces are recut to the smaller plate by the main loop; a one-piece
+                 * model is refitted, or the padding would only apply on "Fit to plate" */
                 if (p->plate_padding != pad && p->chunk_mode == CHUNK_OFF) {
                     double w = app_fit_whole_model(g->app, g->view.bed_w, g->view.bed_d);
                     if (w > 0) set_status(g, "Resized to %.0f mm to fit the plate with %.0f mm padding", w, p->plate_padding);
@@ -1389,8 +1389,7 @@ static void panel_apply_state(gui_t *g, const panel_undo_state *s)
     g->same_height = s->same_height;
     g->stagger_first = s->stagger_first;
     g->stagger_step = s->stagger_step;
-    g->app->params.chunk_max_w = g->view.bed_w - 4;
-    g->app->params.chunk_max_d = g->view.bed_d - 4;
+    app_set_plate(g->app, g->view.bed_w, g->view.bed_d);
 }
 
 /* The edit in progress this frame, for coalescing: a property being typed
@@ -1868,9 +1867,8 @@ int gui_main(app_state *a)
         }
         nk_input_end(g.ctx);
 
-        /* pieces must fit the plate with a little clearance */
-        a->params.chunk_max_w = g.view.bed_w - 4;
-        a->params.chunk_max_d = g.view.bed_d - 4;
+        /* pieces must fit the plate minus its padding */
+        app_set_plate(a, g.view.bed_w, g.view.bed_d);
         /* the piece tabs drive the single-piece preview */
         if (g.tab == 2 && g.sel_piece >= 0 && g.sel_piece < a->model.nchunks) a->params.chunk_view = g.sel_piece + 1;
         else a->params.chunk_view = 0;
@@ -1967,8 +1965,6 @@ int gui_main(app_state *a)
             view_opts vo = g.view;
             vo.highlight_slot = -2;
             vo.bg[0] = 0.13f; vo.bg[1] = 0.14f; vo.bg[2] = 0.17f;
-            vo.bed_w = a->params.chunk_max_w + 4;
-            vo.bed_d = a->params.chunk_max_d + 4;
             for (i = 0; i < a->model.nchunks; i++) {
                 float cx, cy, cw, ch;
                 camera_t cam;

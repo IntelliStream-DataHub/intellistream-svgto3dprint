@@ -146,6 +146,15 @@ double app_fit_whole_model(app_state *a, double plate_w, double plate_d)
     return p->width_mm;
 }
 
+void app_set_plate(app_state *a, double plate_w, double plate_d)
+{
+    /* the padding is kept free in total, as for a one-piece model; a padding
+     * as large as the plate still leaves the pieces something to be cut to */
+    double pad = a->params.plate_padding > 0 ? a->params.plate_padding : 0;
+    a->params.chunk_max_w = plate_w - pad > 10 ? plate_w - pad : 10;
+    a->params.chunk_max_d = plate_d - pad > 10 ? plate_d - pad : 10;
+}
+
 int app_rebuild_view(app_state *a)
 {
     if (!a->model.valid || !a->model.meshes_valid) return 0;
