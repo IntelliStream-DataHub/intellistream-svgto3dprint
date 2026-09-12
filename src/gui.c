@@ -995,7 +995,16 @@ static void panel(gui_t *g, int x, int y, int w, int h)
             nk_property_float(ctx, "#Plate width X (mm)", 50, &g->view.bed_w, 1000, 5, 0.5f);
             nk_property_float(ctx, "#Plate depth Y (mm)", 50, &g->view.bed_d, 1000, 5, 0.5f);
             nk_property_float(ctx, "#Grid step (mm)", 1, &g->view.grid_step, 100, 1, 0.2f);
-            nk_property_double(ctx, "#One-piece padding (mm)", 0, &p->plate_padding, 200, 5, 0.5f);
+            {
+                double pad = p->plate_padding;
+                nk_property_double(ctx, "#One-piece padding (mm)", 0, &p->plate_padding, 200, 5, 0.5f);
+                /* the padding only feeds the fit, so refit a one-piece model as it
+                 * changes; otherwise the field does nothing until "Fit to plate" */
+                if (p->plate_padding != pad && p->chunk_mode == CHUNK_OFF) {
+                    double w = app_fit_whole_model(g->app, g->view.bed_w, g->view.bed_d);
+                    if (w > 0) set_status(g, "Resized to %.0f mm to fit the plate with %.0f mm padding", w, p->plate_padding);
+                }
+            }
             nk_layout_row_dynamic(ctx, 22 * ui, 2);
             b = g->view.show_bed != 0; nk_checkbox_label(ctx, "Show plate", &b); g->view.show_bed = b;
             b = g->view.show_grid != 0; nk_checkbox_label(ctx, "Show grid", &b); g->view.show_grid = b;

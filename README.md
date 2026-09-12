@@ -110,7 +110,7 @@ which is what `tests/compare_info.py` checks.
   *Layered* stacks a body colour with thinner layers on top (or inlaid
   flush); untick it for colours side by side.
 * **Build plate**: plate size (presets included), grid, and the padding used
-  when fitting a one-piece model.
+  when fitting a one-piece model; changing the padding refits the model.
 * **View**: camera presets (`0/1/3/7/9` iso/front/right/top/bottom — bottom
   shows the key slots), perspective/orthographic toggle, dimensions,
   outlines, and a two-point measuring tool.
