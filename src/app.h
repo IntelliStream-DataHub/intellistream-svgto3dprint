@@ -40,6 +40,8 @@ int app_rebuild_view(app_state *a);
 /* Resize the whole (unsplit) model to the plate minus padding, keeping proportions.
  * Returns the new model width, or 0 when there is no model. */
 double app_fit_whole_model(app_state *a, double plate_w, double plate_d);
+/* Size the pieces for a printer plate: the plate minus the plate padding. */
+void app_set_plate(app_state *a, double plate_w, double plate_d);
 /* Apply stagger heights: slot i gets base + i * step (in slot order). */
 void app_stagger_heights(app_state *a, double first, double step);
 

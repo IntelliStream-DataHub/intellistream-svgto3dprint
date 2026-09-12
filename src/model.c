@@ -150,8 +150,8 @@ void model_params_default(model_params *p)
     p->chunk_mode = CHUNK_OFF;
     p->chunk_join_pct = 3.0;
     p->chunk_oversize = 1;
-    p->chunk_max_w = 240;
-    p->chunk_max_d = 240;
+    p->chunk_max_w = 210;       /* a 250 mm plate minus the plate padding */
+    p->chunk_max_d = 210;
     p->chunk_spacing = 8.0;
     p->chunk_view = 0;
     p->plate_padding = 40;
@@ -3228,17 +3228,18 @@ typedef struct { int plate; double y, h, x; } shelf_t;
 
 /* First-fit shelf packing in piece order: plate 1 gets the first pieces, and
  * a later small piece may still slip into an earlier gap. The printer plate
- * is the piece limit plus the 2 mm clearance on every side; pieces keep
+ * is the piece limit plus the plate padding, half on every side; pieces keep
  * chunk_spacing between them. A piece that does not fit the plate at all
  * gets a plate of its own, centred. */
 void model_pack_plates(model_t *m, const model_params *p)
 {
     double W = p->chunk_max_w, D = p->chunk_max_d, gap = p->chunk_spacing > 0 ? p->chunk_spacing : 0;
+    double inset = p->plate_padding > 0 ? p->plate_padding / 2 : 0;
     shelf_t *shelves;
     double *bottom;             /* used depth per plate */
     int nshelves = 0, nplates = 0, i;
-    m->plate_w = W + 4;
-    m->plate_d = D + 4;
+    m->plate_w = W + 2 * inset;
+    m->plate_d = D + 2 * inset;
     m->nplates = 0;
     if (m->nchunks == 0) return;
     shelves = (shelf_t *)malloc(sizeof(shelf_t) * (size_t)m->nchunks);
@@ -3252,8 +3253,8 @@ void model_pack_plates(model_t *m, const model_params *p)
             k = nplates++;
             bottom[k] = D;
             c->on_plate = k;
-            c->plate_pos[0] = 2 + W / 2;
-            c->plate_pos[1] = 2 + D / 2;
+            c->plate_pos[0] = inset + W / 2;
+            c->plate_pos[1] = inset + D / 2;
             continue;
         }
         for (s = 0; s < nshelves; s++) {
@@ -3277,8 +3278,8 @@ void model_pack_plates(model_t *m, const model_params *p)
         }
         x = shelves[sh].x + (shelves[sh].x > 0 ? gap : 0);
         c->on_plate = shelves[sh].plate;
-        c->plate_pos[0] = 2 + x + w / 2;
-        c->plate_pos[1] = 2 + shelves[sh].y + d / 2;
+        c->plate_pos[0] = inset + x + w / 2;
+        c->plate_pos[1] = inset + shelves[sh].y + d / 2;
         shelves[sh].x = x + w;
     }
     m->nplates = nplates;

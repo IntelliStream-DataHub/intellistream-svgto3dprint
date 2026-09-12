@@ -687,6 +687,20 @@ static void draw_lines(render_t *r, const linebuf *b, const float *mvp, float cr
     glDrawArrays(GL_LINES, 0, b->n / 3);
 }
 
+/* a dashed segment on a z plane, for outlines that are not geometry */
+static void lb_dashed(linebuf *b, float x0, float y0, float x1, float y1, float z, float dash, float gap)
+{
+    float dx = x1 - x0, dy = y1 - y0, len = sqrtf(dx * dx + dy * dy), t = 0;
+    if (len <= 0) return;
+    dx /= len;
+    dy /= len;
+    while (t < len) {
+        float e = t + dash < len ? t + dash : len;
+        lb_seg(b, x0 + dx * t, y0 + dy * t, z, x0 + dx * e, y0 + dy * e, z);
+        t = e + gap;
+    }
+}
+
 static void draw_scene(render_t *r, part_gl *parts, const double *bmin, const double *bmax, int has_model,
                        const camera_t *cam, const view_opts *vo, int vx, int vy, int vw, int vh)
 {
@@ -750,6 +764,16 @@ static void draw_scene(render_t *r, part_gl *parts, const double *bmin, const do
             lb_seg(&lb, half_w, half_d, gz, -half_w, half_d, gz);
             lb_seg(&lb, -half_w, half_d, gz, -half_w, -half_d, gz);
             draw_lines(r, &lb, mvp, 0.25f, 0.5f, 0.85f, 0.9f);
+            /* the plate padding: pieces are cut to this area and a fitted model stays in it */
+            if (vo->bed_pad > 0 && vo->bed_pad < vo->bed_w && vo->bed_pad < vo->bed_d) {
+                float iw = half_w - vo->bed_pad / 2, id = half_d - vo->bed_pad / 2;
+                lb.n = 0;
+                lb_dashed(&lb, -iw, -id, iw, -id, gz, 4, 3);
+                lb_dashed(&lb, iw, -id, iw, id, gz, 4, 3);
+                lb_dashed(&lb, iw, id, -iw, id, gz, 4, 3);
+                lb_dashed(&lb, -iw, id, -iw, -id, gz, 4, 3);
+                draw_lines(r, &lb, mvp, 0.45f, 0.7f, 1.0f, 1.0f);
+            }
         }
         /* axes at the origin */
         lb.n = 0;

@@ -102,11 +102,12 @@ typedef struct {
     double chunk_join_pct;      /* objects closer than this (% of logo height) form one chunk */
     int chunk_oversize;         /* pieces larger than the plate: 0 cut into tiles, 1 scale all pieces uniformly,
                                    2 scale each piece on its own, 3 keep and warn */
-    double chunk_max_w;         /* largest chunk footprint (mm), normally the plate size */
+    double chunk_max_w;         /* largest chunk footprint (mm): the plate minus plate_padding */
     double chunk_max_d;
     double chunk_spacing;       /* preview spacing between chunks (mm) */
     int chunk_view;             /* preview: 0 = all chunks, n = chunk n only, centred */
-    double plate_padding;       /* mm kept free around a one-piece model when fitting it to the plate */
+    double plate_padding;       /* mm kept free on the plate in total (half on each side), for the
+                                   pieces and for a one-piece model fitted to the plate */
     int chunk_joints;           /* joint_style_t: how neighbouring base plates are joined */
     double joint_clearance;     /* mm of play between tab and socket, and around a key */
     double joint_spacing;       /* wanted distance between dovetail tab centres along a seam (mm) */

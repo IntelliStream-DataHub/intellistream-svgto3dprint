@@ -43,12 +43,13 @@ static void usage(FILE *f)
         "  --split objects|tiles  split the logo into pieces for a larger total print:\n"
         "                       by object (letters, symbols) or into plate-sized tiles\n"
         "  --join PCT           objects closer than PCT%% of the logo height form one piece (default 5)\n"
-        "  --plate WxD          printer plate size in mm for the pieces (default 246x246)\n"
+        "  --plate WxD          printer plate size in mm for the pieces (default 250x250)\n"
         "  --oversize cut|uniform|each|keep  pieces larger than the plate: cut into tiles,\n"
         "                       shrink all pieces alike (default), shrink each piece, or keep\n"
         "  --fit-plate          resize the logo to fit the plate: as one piece, plate minus\n"
         "                       padding; when splitting, the largest size with every piece uncut\n"
-        "  --padding MM         padding around a one-piece model for --fit-plate (default 40)\n"
+        "  --padding MM         space kept free on the plate, half on each side: pieces are cut to\n"
+        "                       the plate minus this, and --fit-plate fits one piece within it (default 40)\n"
         "  --joints STYLE       how the base plates of neighbouring pieces meet: jigsaw (default;\n"
         "                       one strip per row with jigsaw dovetail tabs), keys (jigsaw tabs plus\n"
         "                       sliding dovetail keys on the underside that lock the pieces\n"
@@ -164,6 +165,7 @@ int cli_main(int argc, char **argv, app_state *a)
     int base_slot = -1;
     int single_file = 0, per_plate = 0;
     int fit_plate = 0;
+    double plate_w = 250, plate_d = 250;
     const char *test_path = NULL;
     int base_given = 0;
 
@@ -237,7 +239,7 @@ int cli_main(int argc, char **argv, app_state *a)
             double w, d;
             NEED_ARG();
             if (sscanf(next, "%lfx%lf", &w, &d) != 2 || w < 10 || d < 10) { fprintf(stderr, "bad --plate value '%s' (e.g. 250x250)\n", next); return 2; }
-            a->params.chunk_max_w = w - 4; a->params.chunk_max_d = d - 4;
+            plate_w = w; plate_d = d;
         }
         else if (!strcmp(s, "--no-cut")) a->params.chunk_oversize = 3;
         else if (!strcmp(s, "--oversize")) {
@@ -283,6 +285,7 @@ int cli_main(int argc, char **argv, app_state *a)
         else input = s;
 #undef NEED_ARG
     }
+    app_set_plate(a, plate_w, plate_d);
     if (color_height > 0) for (i = 0; i < MAX_SLOTS; i++) a->params.slot_height[i] = color_height;
     for (i = 0; i < nslot_h; i++) a->params.slot_height[slot_h_n[i]] = slot_h_v[i];
     for (i = 0; i < nhide; i++) if (hide[i] >= 0 && hide[i] < MAX_SLOTS) a->params.slot_visible[hide[i]] = 0;
@@ -323,7 +326,7 @@ int cli_main(int argc, char **argv, app_state *a)
         app_rebuild_meshes(a);
     }
     if (fit_plate && a->params.chunk_mode == CHUNK_OFF) {
-        double w = app_fit_whole_model(a, a->params.chunk_max_w + 4, a->params.chunk_max_d + 4);
+        double w = app_fit_whole_model(a, plate_w, plate_d);
         if (w > 0) { printf("resized to %.1f mm to fit the plate with %.0f mm padding\n", w, a->params.plate_padding); app_rebuild(a); }
     } else if (fit_plate && a->model.chunk_fit_scale > 0 && a->params.chunk_mode == CHUNK_OBJECTS) {
         double mg = (a->params.base_enabled && a->params.base_thickness > 0 && a->params.base_margin > 0) ? 2.0 * a->params.base_margin : 0.0;

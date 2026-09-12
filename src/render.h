@@ -19,6 +19,7 @@ typedef struct {
     int show_outline;
     float grid_step;        /* mm */
     float bed_w, bed_d;     /* printer bed size in mm */
+    float bed_pad;          /* plate padding in mm (in total): outlines the usable area */
     int highlight_slot;     /* -2 none, -1 base, 0.. slot */
     float bg[3];
 } view_opts;

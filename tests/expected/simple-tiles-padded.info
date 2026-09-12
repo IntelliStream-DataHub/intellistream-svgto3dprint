@@ -1,0 +1,18 @@
+file: simple.svg
+paths: 5  shapes: 5  colours in SVG: 5  slots: 5  materials: 6/8
+logo size: 194.00 x 107.78 mm  (scale 1.07778 mm/unit)
+model bbox: 200.00 x 113.78 x 4.20 mm
+base: #202020  2.0 mm thick  45410 mm^3
+pieces: 6 (plate 80 x 80 mm)
+plates: 6 (printer plate 120 x 120 mm, 8 mm between pieces)
+  chunk01: 67.7 x 68.9 mm,  plate 1 at 53.8,54.4
+  chunk02: 76.7 x 68.9 mm,  plate 2 at 58.3,54.4
+  chunk03: 79.7 x 68.9 mm,  plate 3 at 59.8,54.4
+  chunk04: 67.7 x 56.9 mm,  plate 4 at 53.8,48.4
+  chunk05: 76.7 x 56.9 mm,  plate 5 at 58.3,48.4
+  chunk06: 79.7 x 56.9 mm,  plate 6 at 59.8,48.4
+slot 1: #1E3A8A  shapes 1  area 15844.0 mm^2  z 2.00-4.00 mm  volume 41445.4 mm^3  (body)
+slot 2: #10B981  shapes 1  area 2063.1 mm^2  z 4.00-4.20 mm  volume 411.6 mm^3
+slot 3: #F59E0B  shapes 1  area 1751.9 mm^2  z 4.00-4.20 mm  volume 348.7 mm^3
+slot 4: #FFFFFF  shapes 1  area 580.8 mm^2  z 4.00-4.20 mm  volume 116.0 mm^3
+slot 5: #EF4444  shapes 1  area 525.4 mm^2  z 4.00-4.20 mm  volume 105.1 mm^3
