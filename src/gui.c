@@ -297,6 +297,7 @@ static int params_need_meshes(const model_params *a, const model_params *b)
     if (a->chunk_max_w != b->chunk_max_w || a->chunk_max_d != b->chunk_max_d) return 1;
     if (a->chunk_joints != b->chunk_joints || a->joint_clearance != b->joint_clearance) return 1;
     if (a->joint_spacing != b->joint_spacing || a->joint_width != b->joint_width) return 1;
+    if (a->joint_offset != b->joint_offset) return 1;
     return 0;
 }
 
@@ -1125,6 +1126,7 @@ static void panel(gui_t *g, int x, int y, int w, int h)
                         /* no hair-thin tabs: stepping up from auto starts at 2 mm, down from there returns to auto */
                         if (tw > 0 && tw < 2) tw = p->joint_width > 0 ? 0 : 2;
                         p->joint_width = tw;
+                        nk_property_double(ctx, "#Tab offset (mm)", -250, &p->joint_offset, 250, 5, 0.5f);
                         nk_layout_row_dynamic(ctx, 22 * ui, 1);
                         if (tw > 0) nk_label(ctx, "Tabs keep their shape; depth stops at 12 mm.", NK_TEXT_LEFT);
                         else nk_label(ctx, "Auto: each tab sized to its seam (up to 20 mm).", NK_TEXT_LEFT);

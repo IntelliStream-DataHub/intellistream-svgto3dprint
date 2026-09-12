@@ -94,7 +94,11 @@ which is what `tests/compare_info.py` checks.
   between tab centres along a seam (60 mm by default), *Tab width* the width
   of each tab at its widest (0 sizes every tab to its seam); tabs keep their
   dovetail shape, reach at most 12 mm into the neighbour, and a seam too
-  short for the chosen spacing or width gets fewer or smaller tabs. Add
+  short for the chosen spacing or width gets fewer or smaller tabs.
+  *Tab offset* slides the tabs along their seam (positive up or right) to move
+  one off a thin part of the artwork; each seam gives only what its end tabs
+  can spare, so tabs stay clear of the corners, and a tab and its socket
+  always move together. Add
   *sliding dovetail keys* to also lock pieces together vertically — a
   separate printed bar slides into an underside slot across each seam after
   assembly, and slides back out to separate them.
@@ -127,6 +131,7 @@ is beneath it, so colours never overlap in the print.
     intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --plate 250x250 logo.svg
     intellistream-svgto3dprint --export big.3mf --width 2000 --split objects --joints keys logo.svg
     intellistream-svgto3dprint --export big.3mf --width 1200 --split tiles --joint-width 16 --joint-spacing 40 logo.svg
+    intellistream-svgto3dprint --export big.3mf --width 800 --split objects --joint-offset 25 logo.svg
     intellistream-svgto3dprint --export-test fit.3mf --joints keys --joint-clearance 0.1
 
 `intellistream-svgto3dprint --help` lists every option: sizes, per-slot
