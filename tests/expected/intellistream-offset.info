@@ -1,0 +1,25 @@
+file: intellistream-logo.svg
+paths: 183  shapes: 77  colours in SVG: 4  slots: 4  materials: 5/8
+logo size: 394.00 x 92.43 mm  (scale 1.36193 mm/unit)
+model bbox: 400.00 x 98.43 x 4.20 mm
+base: #202020  2.0 mm thick  58203 mm^3
+pieces: 14 (plate 240 x 240 mm)  every piece fits uncut up to 299% of this size
+plates: 2 (printer plate 244 x 244 mm, 8 mm between pieces)
+  chunk01: 12.7 x 66.6 mm,  plate 1 at 8.4,35.3
+  chunk02: 52.0 x 66.6 mm,  plate 1 at 48.7,35.3
+  chunk03: 32.7 x 66.6 mm,  plate 1 at 99.1,35.3
+  chunk04: 53.7 x 66.6 mm,  plate 1 at 150.3,35.3
+  chunk05: 18.9 x 66.6 mm,  plate 1 at 194.5,35.3
+  chunk06: 19.7 x 66.6 mm,  plate 1 at 221.8,35.3
+  chunk07: 19.9 x 66.6 mm,  plate 1 at 12.0,110.0
+  chunk08: 43.3 x 66.6 mm,  plate 1 at 23.7,184.6
+  chunk09: 31.1 x 66.6 mm,  plate 1 at 68.8,184.6
+  chunk10: 29.4 x 66.6 mm,  plate 1 at 44.6,110.0
+  chunk11: 52.0 x 66.6 mm,  plate 1 at 93.4,110.0
+  chunk12: 57.4 x 66.6 mm,  plate 1 at 156.1,110.0
+  chunk13: 72.7 x 66.6 mm,  plate 1 at 128.7,184.6
+  chunk14: 83.7 x 30.0 mm,  plate 2 at 43.8,17.0
+slot 1: #105984  shapes 20  area 6003.9 mm^2  z 2.00-4.00 mm  volume 15036.6 mm^3  (body)
+slot 2: #005984  shapes 2  area 1396.9 mm^2  z 4.00-4.20 mm  volume 279.0 mm^3
+slot 3: #98BBC8  shapes 22  area 86.5 mm^2  z 4.00-4.20 mm  volume 17.3 mm^3
+slot 4: #FFFFFF  shapes 33  area 44.1 mm^2  z 4.00-4.20 mm  volume 8.8 mm^3

@@ -22,8 +22,9 @@
 
 static int nfail, ncheck;
 static char root[1024];
-/* dovetail tab width and spacing for the next cases (0 width = sized to the seam) */
-static double case_joint_width = 0, case_joint_spacing = 60;
+/* dovetail tab width, spacing and offset along the seam for the next cases
+ * (0 width = sized to the seam) */
+static double case_joint_width = 0, case_joint_spacing = 60, case_joint_offset = 0;
 
 static void check_(int ok, const char *what, int line)
 {
@@ -366,6 +367,8 @@ static int run_case(const char *name, const char *svg, double width, double marg
              joints ? "" : "/loose", width, margin, plate);
     if (case_joint_width > 0 || case_joint_spacing != 60)
         snprintf(tag + strlen(tag), sizeof tag - strlen(tag), " tab=%.0f/%.0f", case_joint_width, case_joint_spacing);
+    if (case_joint_offset != 0)
+        snprintf(tag + strlen(tag), sizeof tag - strlen(tag), " off=%.0f", case_joint_offset);
     app_init(&a);
     a.params.width_mm = width;
     a.width_from_cli = 1;
@@ -374,6 +377,7 @@ static int run_case(const char *name, const char *svg, double width, double marg
     a.params.chunk_joints = joints;
     a.params.joint_width = case_joint_width;
     a.params.joint_spacing = case_joint_spacing;
+    a.params.joint_offset = case_joint_offset;
     if (mode == CHUNK_OBJECTS) a.params.chunk_oversize = 0;   /* cut: pieces must fit as cut, never shrunk */
     a.params.chunk_max_w = plate - 4;
     a.params.chunk_max_d = plate - 4;
@@ -394,10 +398,11 @@ static int run_case(const char *name, const char *svg, double width, double marg
     check_coverage(tag, &a.model, margin);
     check_logo_on_plate(tag, &a.model);
     if (mode == CHUNK_TILES) check_fill_plate(tag, &a.model, &a.params);
+    /* Object pieces stand apart, so no two plates may claim the same
+     * millimetres, joined or loose.  Loose tiles are cut from one contiguous
+     * artwork and each keep their own margin all round, so they do overlap. */
+    if (mode == CHUNK_OBJECTS || joints) check_overlaps(tag, &a.model);
     if (mode == CHUNK_TILES && joints) {
-        /* the plate rectangles exist for connected plates only; loose tiles
-         * are each their own artwork plus margin */
-        check_overlaps(tag, &a.model);
         check_row_alignment(tag, &a.model);
         check_shrink_wrap(tag, &a.model, margin);
     }
@@ -472,6 +477,10 @@ int main(int argc, char **argv)
     run_case("colors", EX("many_colors.svg"), 200, 3, 60, CHUNK_OBJECTS, 0);
     run_case("arcs", EX("evenodd_arcs.svg"), 240, 20, 140, CHUNK_OBJECTS, 1);
     run_case("logo", EX("intellistream-logo.svg"), 400, 3, 250, CHUNK_OBJECTS, 1);
+    /* a margin wider than half the gap: the strip and the line below it, and
+     * loose plates of neighbouring letters, all used to grow into each other */
+    run_case("logo", EX("intellistream-logo.svg"), 800, 10, 250, CHUNK_OBJECTS, 1);
+    run_case("logo", EX("intellistream-logo.svg"), 800, 10, 250, CHUNK_OBJECTS, 0);
     run_case("rects", FX("two_rects.svg"), 106, 3, 250, CHUNK_OBJECTS, 1);
     run_case("squares", FX("two_squares.svg"), 58, 3, 60, CHUNK_OBJECTS, 0);
     run_case("squares", FX("two_squares.svg"), 90, 3, 60, CHUNK_OBJECTS, 1);
@@ -487,6 +496,17 @@ int main(int argc, char **argv)
     TILES("logo", EX("intellistream-logo.svg"), 400, 3, 80);
     TILES("L", FX("l_shape.svg"), 240, 12, 90);
     case_joint_width = 0; case_joint_spacing = 60;
+
+    /* tabs slid along their seam: every seam keeps its tabs clear of the
+     * corners, and a tab and its socket still move together (a mismatch
+     * shows up as two pieces claiming the same millimetres) */
+    case_joint_offset = 25;
+    TILES("logo", EX("intellistream-logo.svg"), 400, 3, 80);
+    run_case("logo", EX("intellistream-logo.svg"), 400, 3, 250, CHUNK_OBJECTS, 1);
+    case_joint_offset = -400;   /* far past what any seam can give */
+    TILES("simple", EX("simple.svg"), 400, 10, 180);
+    run_case("arcs", EX("evenodd_arcs.svg"), 240, 20, 140, CHUNK_OBJECTS, 1);
+    case_joint_offset = 0;
 
 #undef EX
 #undef FX

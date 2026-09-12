@@ -60,6 +60,9 @@ static void usage(FILE *f)
         "                       evenly spread, fewer where the tabs would crowd)\n"
         "  --joint-width MM     width of a dovetail tab at its widest; neck and depth follow\n"
         "                       (depth at most 12 mm).  0 = sized to each seam (default)\n"
+        "  --joint-offset MM    slide the tabs along their seam (default 0; + is up/right).\n"
+        "                       Each seam gives what its end tabs can spare, so tabs stay\n"
+        "                       clear of the corners; use it to move a tab off thin artwork\n"
         "  --export-test FILE   write a joint test print (.stl or .3mf): two small plates with the\n"
         "                       current joint and key, to check the clearance on your printer\n"
         "  --single-file        export all pieces into one file instead of one file per piece\n"
@@ -268,6 +271,11 @@ int cli_main(int argc, char **argv, app_state *a)
             NEED_ARG();
             a->params.joint_width = atof(next);
             if (a->params.joint_width != 0 && (a->params.joint_width < 2 || a->params.joint_width > 100)) { fprintf(stderr, "bad --joint-width value '%s' (0 for auto, or 2-100 mm)\n", next); return 2; }
+        }
+        else if (!strcmp(s, "--joint-offset")) {
+            NEED_ARG();
+            a->params.joint_offset = atof(next);
+            if (a->params.joint_offset < -250 || a->params.joint_offset > 250) { fprintf(stderr, "bad --joint-offset value '%s' (-250 to 250 mm)\n", next); return 2; }
         }
         else if (!strcmp(s, "--export-test")) { NEED_ARG(); test_path = next; }
 

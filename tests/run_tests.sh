@@ -155,6 +155,10 @@ run clip-tiles          --split tiles --plate 80x80 "$EX/clip_pattern.svg"
 run intellistream-tiles --split tiles --plate 80x80 --width 400 "$EX/intellistream-logo.svg"
 # large margin + empty tiles must not grow two plates into the same hole
 run intellistream-wide  --split tiles --plate 270x270 --width 1500 --margin 50 "$EX/intellistream-logo.svg"
+# a margin wider than the gap to the line below: the strips must not overlap
+run intellistream-rows  --split objects --width 800 --margin 10 "$EX/intellistream-logo.svg"
+# tabs slid along their seams, each seam giving what its end tabs can spare
+run intellistream-offset --split objects --width 400 --joint-offset 25 "$EX/intellistream-logo.svg"
 # other silhouettes / sizes (closed meshes; layout rules live in test_plates)
 FIX=$HERE/fixtures
 convert l-shape         --split tiles --plate 140x140 --width 300 --margin 40 "$FIX/l_shape.svg"

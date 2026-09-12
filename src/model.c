@@ -159,6 +159,7 @@ void model_params_default(model_params *p)
     p->joint_clearance = 0.15;
     p->joint_spacing = 60;
     p->joint_width = 0;
+    p->joint_offset = 0;
     p->export_color_objects = 0;   /* parts of one object keep their stacking in every slicer */
     p->layered = 1;             /* the main colour forms the body, other colours are layers on top */
     p->layered_flush = 0;
@@ -1142,7 +1143,7 @@ static int plate_joint_quads(const double *rect, const joint_spec *joints, const
     int side, j, nq = 0;
     for (side = 0; side < 4; side++) {
         const joint_spec *js = &joints[side];
-        double shared, len, neck, head, edge;
+        double shared, len, neck, head, edge, room, off;
         int n;
         if (js->type == 0) continue;
         shared = js->s1 - js->s0;
@@ -1180,8 +1181,15 @@ static int plate_joint_quads(const double *rect, const joint_spec *joints, const
          * same room between tabs, and never closer than 0.6 of a head. */
         while (n > 1 && (shared / n < head + 2 * (len + 2 * cl + TAB_CORNER_WALL) || shared / n < head * 1.6)) n--;
         edge = (side == 0) ? rect[0] : (side == 1) ? rect[2] : (side == 2) ? rect[1] : rect[3];
+        /* Slide the whole row of tabs along the seam, as far as the room its
+         * end tabs have left over: a tab closer to a corner than its own end
+         * room would cut into the perpendicular seam's socket.  Both sides of
+         * a seam measure the same span, so tab and socket move together. */
+        room = shared / (2 * n) - (head / 2 + len + 2 * cl + TAB_CORNER_WALL);
+        if (room < 0) room = 0;
+        off = p->joint_offset > room ? room : (p->joint_offset < -room ? -room : p->joint_offset);
         for (j = 0; j < n && nq < MAX_JOINT_QUADS; j++) {
-            double cc = js->s0 + shared * (j + 0.5) / n;
+            double cc = js->s0 + shared * (j + 0.5) / n + off;
             out[nq].side = side;
             out[nq].type = js->type;
             dovetail_quad(side, edge, cc, neck, head, len, js->type == 1 ? 0 : p->joint_clearance, out[nq].q);
@@ -1492,6 +1500,11 @@ static void seam_key_layout(const model_params *p, double s0, double s1, double 
     out->t1 = hi;
 }
 
+/* Two pieces cut from one object meet on a line each of them stores for
+ * itself, and a cut keeps 1e-6 mm past it (cut_chunk_grid), so neither a
+ * shared edge nor a shared corner compares exactly. */
+#define CUT_EPS 1e-5
+
 /* Neighbour of chunk i in the same tile group: side 0 left, 1 right, 2 bottom, 3 top; -1 if none. */
 static int tile_neighbour(const model_t *m, int i, int side)
 {
@@ -1505,39 +1518,65 @@ static int tile_neighbour(const model_t *m, int i, int side)
     return -1;
 }
 
+/* Span of a chunk's tile group along x. */
+static void group_xspan(const model_t *m, int i, double *gx0, double *gx1)
+{
+    const chunk_t *c = &m->chunks[i];
+    int q;
+    *gx0 = DBL_MAX; *gx1 = -DBL_MAX;
+    for (q = 0; q < m->nchunks; q++) {
+        if (m->chunks[q].group != c->group) continue;
+        if (m->chunks[q].tile[0] < *gx0) *gx0 = m->chunks[q].tile[0];
+        if (m->chunks[q].tile[2] > *gx1) *gx1 = m->chunks[q].tile[2];
+    }
+}
+
 /* Nearest piece of another group in the same row to the left (side 0) or right (side 1); -1 if none. */
-static int strip_neighbour(const model_t *m, int i, int side, double gx0, double gx1)
+static int strip_neighbour(const model_t *m, int i, int side)
 {
     const chunk_t *c = &m->chunks[i];
     int k, best = -1;
-    double bestd = DBL_MAX;
+    double gx0, gx1, bestd = DBL_MAX, bestov = -DBL_MAX;
+    group_xspan(m, i, &gx0, &gx1);
     for (k = 0; k < m->nchunks; k++) {
         const chunk_t *o = &m->chunks[k];
-        double d;
+        double d, ov;
         if (o->group == c->group || o->row != c->row) continue;
-        if (side == 0) { if (o->tile[2] > gx0 + 1e-9) continue; d = gx0 - o->tile[2]; }
-        else { if (o->tile[0] < gx1 - 1e-9) continue; d = o->tile[0] - gx1; }
-        if (d < bestd) { bestd = d; best = k; }
+        if (side == 0) { if (o->tile[2] > gx0 + CUT_EPS) continue; d = gx0 - o->tile[2]; }
+        else { if (o->tile[0] < gx1 - CUT_EPS) continue; d = o->tile[0] - gx1; }
+        if (d < 0) d = 0;
+        /* a piece cut into stacked tiles offers several of them at the same
+         * distance: the one sharing most of this piece's height is the mate */
+        ov = (c->tile[3] < o->tile[3] ? c->tile[3] : o->tile[3]) - (c->tile[1] > o->tile[1] ? c->tile[1] : o->tile[1]);
+        if (best < 0 || d < bestd - 1e-6 || (d < bestd + 1e-6 && ov > bestov)) {
+            if (d < bestd) bestd = d;
+            bestov = ov;
+            best = k;
+        }
     }
     return best;
 }
 
+/* The strip seam of chunk i on side 0 / 1, or -1.  Only a mutual pair makes a
+ * seam: where a piece was cut into stacked tiles every tile sees the same
+ * piece beside it, but it can only mate with one, and the others' dovetails
+ * would land on a plate that has no socket for them. */
+static int strip_seam(const model_t *m, int i, int side)
+{
+    int k = strip_neighbour(m, i, side);
+    if (k < 0) return -1;
+    return strip_neighbour(m, k, side == 0 ? 1 : 0) == i ? k : -1;
+}
+
 /* Neighbours of chunk i on every side: tile neighbours, and in object mode
- * the nearest pieces of the same row to the left / right (connected strips). */
+ * the pieces of the same row it shares a seam with to the left / right. */
 static void chunk_neighbours(const model_t *m, const model_params *p, int i, int *nb)
 {
-    const chunk_t *c = &m->chunks[i];
-    double gx0 = DBL_MAX, gx1 = -DBL_MAX;
-    int q, side;
-    for (q = 0; q < m->nchunks; q++) {
-        if (m->chunks[q].group != c->group) continue;
-        if (m->chunks[q].tile[0] < gx0) gx0 = m->chunks[q].tile[0];
-        if (m->chunks[q].tile[2] > gx1) gx1 = m->chunks[q].tile[2];
-    }
+    int side;
     for (side = 0; side < 4; side++) nb[side] = tile_neighbour(m, i, side);
     if (p->chunk_mode != CHUNK_TILES) {
-        if (nb[0] < 0) nb[0] = strip_neighbour(m, i, 0, gx0, gx1);
-        if (nb[1] < 0) nb[1] = strip_neighbour(m, i, 1, gx0, gx1);
+        if (nb[0] < 0) nb[0] = strip_seam(m, i, 0);
+        if (nb[1] < 0) nb[1] = strip_seam(m, i, 1);
     }
 }
 
@@ -1595,29 +1634,51 @@ static void plate_yield_overlap(chunk_t *cut, const chunk_t *keep)
     plate_cover_geom(cut->plate, cut);
 }
 
+static int z_has_base(const model_params *p);
+
 /* Plate rectangles of every chunk (model coords), from tile cut lines, row extents and margins. */
 static void compute_plates(model_t *m, const model_params *p, double mg)
 {
-    int i, k;
+    int i, k, nrows = 0;
+    int loose = !(p->chunk_joints && z_has_base(p));
+    double *rex;        /* per row: artwork y range, then tile x range */
+    for (i = 0; i < m->nchunks; i++) if (m->chunks[i].row >= nrows) nrows = m->chunks[i].row + 1;
+    rex = (double *)malloc(sizeof(double) * 4 * (size_t)(nrows > 0 ? nrows : 1));
+    for (i = 0; i < nrows; i++) {
+        rex[4 * i] = DBL_MAX; rex[4 * i + 1] = -DBL_MAX;
+        rex[4 * i + 2] = DBL_MAX; rex[4 * i + 3] = -DBL_MAX;
+    }
+    for (i = 0; i < m->nchunks; i++) {
+        const chunk_t *c = &m->chunks[i];
+        double *e = &rex[4 * c->row];
+        if (c->gmin[1] < e[0]) e[0] = c->gmin[1];
+        if (c->gmax[1] > e[1]) e[1] = c->gmax[1];
+        if (c->tile[0] < e[2]) e[2] = c->tile[0];
+        if (c->tile[2] > e[3]) e[3] = c->tile[2];
+    }
     for (i = 0; i < m->nchunks; i++) {
         chunk_t *c = &m->chunks[i];
-        double gx0 = DBL_MAX, gx1 = -DBL_MAX, ry0 = DBL_MAX, ry1 = -DBL_MAX;
-        int nbL, nbR, nbB, nbT, sL, sR;
-        for (k = 0; k < m->nchunks; k++) {
-            const chunk_t *o = &m->chunks[k];
-            if (o->group == c->group) {
-                if (o->tile[0] < gx0) gx0 = o->tile[0];
-                if (o->tile[2] > gx1) gx1 = o->tile[2];
-            }
-            if (o->row == c->row) {
-                if (o->gmin[1] < ry0) ry0 = o->gmin[1];
-                if (o->gmax[1] > ry1) ry1 = o->gmax[1];
-            }
+        double gx0, gx1;
+        const double *e = &rex[4 * c->row];
+        double ry0 = e[0], ry1 = e[1], below = -DBL_MAX, above = DBL_MAX;
+        int nbL, nbR, nbB, nbT, sL, sR, seamL, seamR;
+        /* How close the nearest row under / over this one comes where it runs
+         * alongside it.  Both sides measure row extent against row extent, so
+         * the two strips work out the same seam line. */
+        for (k = 0; k < nrows; k++) {
+            const double *o = &rex[4 * k];
+            if (k == c->row || o[1] < o[0]) continue;
+            if (o[2] >= e[3] - 1e-6 || o[3] <= e[2] + 1e-6) continue;
+            if (o[1] <= ry0 + 1e-6 && o[1] > below) below = o[1];
+            if (o[0] >= ry1 - 1e-6 && o[0] < above) above = o[0];
         }
+        group_xspan(m, i, &gx0, &gx1);
         nbL = tile_neighbour(m, i, 0); nbR = tile_neighbour(m, i, 1);
         nbB = tile_neighbour(m, i, 2); nbT = tile_neighbour(m, i, 3);
-        sL = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 0, gx0, gx1);
-        sR = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 1, gx0, gx1);
+        sL = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 0);
+        sR = p->chunk_mode == CHUNK_TILES ? -1 : strip_neighbour(m, i, 1);
+        seamL = sL >= 0 ? strip_seam(m, i, 0) : -1;
+        seamR = sR >= 0 ? strip_seam(m, i, 1) : -1;
         if (p->chunk_mode == CHUNK_TILES) {
             /* Shared seams stay on the tile grid so jigsaws line up.  Top and
              * bottom of a row stay on the tile so the assembled strip is
@@ -1638,18 +1699,85 @@ static void compute_plates(model_t *m, const model_params *p, double mg)
                 if (c->gmin[1] > c->tile[1] + inset) c->plate[1] = c->gmin[1] - mg;
                 if (c->gmax[1] < c->tile[3] - inset) c->plate[3] = c->gmax[1] + mg;
             }
+        } else if (loose) {
+            /* Separate plates: each piece is its own artwork plus the margin.
+             * The pass below caps every side at half the gap to the next
+             * piece, so pieces closer together than two margins still butt
+             * instead of claiming the same millimetres. */
+            c->plate[0] = c->gmin[0] - mg; c->plate[1] = c->gmin[1] - mg;
+            c->plate[2] = c->gmax[0] + mg; c->plate[3] = c->gmax[1] + mg;
         } else {
-            c->plate[0] = nbL >= 0 ? c->tile[0] : (sL >= 0 ? (m->chunks[sL].tile[2] + gx0) / 2 : c->tile[0] - mg);
-            c->plate[2] = nbR >= 0 ? c->tile[2] : (sR >= 0 ? (gx1 + m->chunks[sR].tile[0]) / 2 : c->tile[2] + mg);
+            /* A seam runs down the middle of the gap, and the strip grows out
+             * to it.  Without a seam (no piece beside this one, or the piece
+             * beside it mates with another tile of this one) the edge keeps
+             * its margin, but no further than that same middle. */
+            double mid0 = sL >= 0 ? (m->chunks[sL].tile[2] + gx0) / 2 : -DBL_MAX;
+            double mid1 = sR >= 0 ? (gx1 + m->chunks[sR].tile[0]) / 2 : DBL_MAX;
+            double free0 = c->tile[0] - mg > mid0 ? c->tile[0] - mg : mid0;
+            double free1 = c->tile[2] + mg < mid1 ? c->tile[2] + mg : mid1;
+            c->plate[0] = nbL >= 0 ? c->tile[0] : (seamL >= 0 ? mid0 : free0);
+            c->plate[2] = nbR >= 0 ? c->tile[2] : (seamR >= 0 ? mid1 : free1);
             c->plate[1] = nbB >= 0 ? c->tile[1] : ry0 - mg;
             c->plate[3] = nbT >= 0 ? c->tile[3] : ry1 + mg;
+            /* A row strip takes the full margin above and below only where it
+             * has the room.  Two rows closer than two margins meet halfway,
+             * the way the pieces inside a row do: the whole strip stops at
+             * the same line, so its edge stays straight. */
+            if (below > -DBL_MAX && c->plate[1] < (below + ry0) / 2) c->plate[1] = (below + ry0) / 2;
+            if (above < DBL_MAX && c->plate[3] > (above + ry1) / 2) c->plate[3] = (above + ry1) / 2;
+            plate_cover_geom(c->plate, c);
         }
+    }
+    free(rex);
+    if (loose) {
+        /* Loose plates grow from the artwork on every side, so any two that
+         * are closer than two margins meet halfway on each axis; a piece cut
+         * into tiles loses the margin at the cut line, where its own artwork
+         * continues on the neighbour. */
+        for (i = 0; i < m->nchunks; i++) {
+            for (k = i + 1; k < m->nchunks; k++) {
+                chunk_t *a = &m->chunks[i], *b = &m->chunks[k];
+                int axis;
+                for (axis = 0; axis < 2; axis++) {
+                    chunk_t *lo, *hi;
+                    double mid;
+                    /* tiles cut from one piece overlap by the cut's own
+                     * overshoot, which is not a gap either way */
+                    if (a->gmax[axis] <= b->gmin[axis] + CUT_EPS) { lo = a; hi = b; }
+                    else if (b->gmax[axis] <= a->gmin[axis] + CUT_EPS) { lo = b; hi = a; }
+                    else continue;
+                    mid = (lo->gmax[axis] + hi->gmin[axis]) / 2;
+                    if (lo->plate[axis + 2] > mid) lo->plate[axis + 2] = mid;
+                    if (hi->plate[axis] < mid) hi->plate[axis] = mid;
+                }
+            }
+        }
+        return;
+    }
+    if (p->chunk_mode != CHUNK_TILES) {
+        /* A row strip assumes its pieces stand side by side.  Where two of
+         * them are stacked instead (a piece too tall for the bed, cut across
+         * and then cut again into its own grid), both would take the whole
+         * row's height: they meet halfway, like two rows do. */
+        for (i = 0; i < m->nchunks; i++) {
+            for (k = i + 1; k < m->nchunks; k++) {
+                chunk_t *a = &m->chunks[i], *b = &m->chunks[k], *lo, *hi;
+                double mid;
+                if (a->row != b->row || a->group == b->group) continue;
+                if (a->tile[0] >= b->tile[2] - CUT_EPS || b->tile[0] >= a->tile[2] - CUT_EPS) continue;
+                if (a->gmax[1] <= b->gmin[1] + CUT_EPS) { lo = a; hi = b; }
+                else if (b->gmax[1] <= a->gmin[1] + CUT_EPS) { lo = b; hi = a; }
+                else continue;
+                mid = (lo->gmax[1] + hi->gmin[1]) / 2;
+                if (lo->plate[3] > mid) lo->plate[3] = mid;
+                if (hi->plate[1] < mid) hi->plate[1] = mid;
+            }
+        }
+        return;
     }
     /* Two tiles on an inside corner both grow into the empty cell.  Keep the
      * margin of the upper (then left) piece; the other yields so they only
-     * meet at an edge.  Edge neighbours keep their jigsaw overlap.  (Object
-     * pieces of one row may overlap by design: their plates span the row.) */
-    if (p->chunk_mode != CHUNK_TILES) return;
+     * meet at an edge.  Edge neighbours keep their jigsaw overlap. */
     for (i = 0; i < m->nchunks; i++) {
         for (k = i + 1; k < m->nchunks; k++) {
             chunk_t *a = &m->chunks[i], *b = &m->chunks[k];
@@ -2605,14 +2733,14 @@ static void compute_chunks(model_t *m, const model_params *p)
                 int any = 0;
                 m->chunks = list.c;
                 m->nchunks = list.n;
-                if (joints && list.n > 1) compute_plates(m, p, mg);
+                if (list.n > 1) compute_plates(m, p, mg);
                 memset(&cut, 0, sizeof(cut));
                 for (i = 0; i < list.n; i++) {
                     chunk_t *c = &list.c[i];
                     int nb[4] = {-1, -1, -1, -1}, nx = 1, ny = 1;
                     double w, d, gw = c->gmax[0] - c->gmin[0], gd = c->gmax[1] - c->gmin[1];
                     if (joints && list.n > 1) chunk_neighbours(m, p, i, nb);
-                    else { c->plate[0] = c->gmin[0] - mg; c->plate[1] = c->gmin[1] - mg; c->plate[2] = c->gmax[0] + mg; c->plate[3] = c->gmax[1] + mg; }
+                    else if (list.n == 1) { c->plate[0] = c->gmin[0] - mg; c->plate[1] = c->gmin[1] - mg; c->plate[2] = c->gmax[0] + mg; c->plate[3] = c->gmax[1] + mg; }
                     w = c->plate[2] - c->plate[0] + (nb[0] >= 0 ? tab : 0);
                     d = c->plate[3] - c->plate[1] + (nb[2] >= 0 ? tab : 0);
                     if (model_fit_angle(w, d, p->chunk_max_w, p->chunk_max_d) < 0) {
@@ -2925,7 +3053,15 @@ int model_build_meshes(model_t *m, const model_params *p)
                     plate_artwork(&c->body_region, m, i, -1, nb, quads, nq);
                 }
             } else {
-                rect[0] = lminx - mg; rect[1] = lminy - mg; rect[2] = lmaxx + mg; rect[3] = lmaxy + mg;
+                if (p->chunk_mode == CHUNK_OBJECTS && m->nchunks > 1) {
+                    /* separate plates, but still capped at half the gap to the
+                     * next piece so the printed pieces sit side by side */
+                    if (i == 0) compute_plates(m, p, mg);
+                    rect[0] = c->plate[0] - c->center[0]; rect[1] = c->plate[1] - c->center[1];
+                    rect[2] = c->plate[2] - c->center[0]; rect[3] = c->plate[3] - c->center[1];
+                } else {
+                    rect[0] = lminx - mg; rect[1] = lminy - mg; rect[2] = lmaxx + mg; rect[3] = lmaxy + mg;
+                }
                 rounded_rect(&c->base_region, rect[0], rect[1], rect[2], rect[3], p->base_radius, p->curve_tol_mm);
             }
             if (c->base_region.n) {
